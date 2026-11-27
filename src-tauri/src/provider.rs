@@ -209,6 +209,14 @@ pub trait ChainProvider: Send {
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
+/// Inactivity ceiling for the log stream. The watched programs (Raydium,
+/// Orca, pump.fun, PumpSwap) are among the busiest on Solana, so confirmed
+/// transactions touching them arrive many times per minute — a socket that
+/// has produced no frame at all for this long is silently stalled (proxy or
+/// NAT killed the flow without a Close frame), not quiet. The listener's
+/// reconnect loop treats this as a transport error and resubscribes.
+const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Shared, reconnect-safe budget for paid Helius read calls.
 ///
 /// Streaming stays on the free public websocket by design; the key is
@@ -521,7 +529,18 @@ impl ChainProvider for WsProvider {
 
     async fn next_event(&mut self) -> Result<LogNotification, ProviderError> {
         loop {
-            match self.stream.next().await {
+            // Idle ceiling: a fully silent socket for STREAM_IDLE_TIMEOUT is
+            // a stall, not a quiet chain — surface it so the caller
+            // reconnects instead of waiting on a dead stream forever.
+            let frame = tokio::time::timeout(STREAM_IDLE_TIMEOUT, self.stream.next())
+                .await
+                .map_err(|_| {
+                    ProviderError::Protocol(format!(
+                        "no stream frame in {}s; treating socket as stalled",
+                        STREAM_IDLE_TIMEOUT.as_secs()
+                    ))
+                })?;
+            match frame {
                 Some(Ok(Message::Text(text))) => {
                     let value: Value = serde_json::from_str(&text)
                         .map_err(|e| ProviderError::Protocol(format!("bad json: {e}")))?;
