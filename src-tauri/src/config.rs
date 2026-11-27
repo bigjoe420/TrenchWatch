@@ -9,7 +9,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
     pub rpc: RpcConfig,
     #[serde(default)]
@@ -31,17 +31,6 @@ impl Default for RpcConfig {
     fn default() -> Self {
         Self {
             ws_url: "wss://api.mainnet-beta.solana.com".to_string(),
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            rpc: RpcConfig::default(),
-            monitor: MonitorConfig::default(),
-            alerts: AlertConfig::default(),
-            storage: StorageConfig::default(),
         }
     }
 }
@@ -89,7 +78,7 @@ pub enum ConfigError {
     Parse {
         path: std::path::PathBuf,
         #[source]
-        source: toml::de::Error,
+        source: Box<toml::de::Error>,
     },
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -113,7 +102,10 @@ pub fn load(app_data_dir: &Path) -> Result<Config, ConfigError> {
     };
 
     let text = std::fs::read_to_string(&path)?;
-    toml::from_str(&text).map_err(|source| ConfigError::Parse { path, source })
+    toml::from_str(&text).map_err(|source| ConfigError::Parse {
+        path,
+        source: Box::new(source),
+    })
 }
 
 #[cfg(test)]
