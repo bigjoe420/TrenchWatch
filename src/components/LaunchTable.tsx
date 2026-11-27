@@ -122,12 +122,28 @@ export default function LaunchTable({
           })}
         </tbody>
       </table>
-      {rows.length === 0 && (
+      {rows.length === 0 && analyses.length === 0 && (
         <div className="empty-state">
-          <p>No launches match these filters yet.</p>
+          <p>Radar is live — watching Solana mainnet for new pool creations.</p>
           <p className="dim">
-            TrenchWatch listens for new pool creations on Solana mainnet. Launches appear here
-            within seconds, each with a full evidence receipt.
+            Launches appear here within seconds during active hours, each with a full
+            evidence receipt. Nothing yet is normal: new launches pause overnight and on
+            quiet weekends — leave it running. If this stays empty for a long stretch,
+            check the status pill in the top right.
+          </p>
+          <p className="dim">
+            New here? The gear icon (top right) sets up alerts — desktop notifications
+            and Discord — and an optional Helius key for faster analysis reads.
+            Everything works without them.
+          </p>
+        </div>
+      )}
+      {rows.length === 0 && analyses.length > 0 && (
+        <div className="empty-state">
+          <p>No launches match these filters.</p>
+          <p className="dim">
+            Try another launchpad or verdict — or uncheck “hide flagged launches” to see
+            everything TrenchWatch has analyzed.
           </p>
         </div>
       )}

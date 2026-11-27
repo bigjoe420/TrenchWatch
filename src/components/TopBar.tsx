@@ -46,7 +46,7 @@ export default function TopBar({
               <span className="stat-value">{formatDuration(status.uptime_secs)}</span>
             </span>
             {status.helius.enabled && (
-              <span className="stat" title="Paid Helius enrichment calls used today (reads only; the launch stream stays on the free websocket)">
+              <span className="stat stat-helius" title="Paid Helius enrichment calls used today (reads only; the launch stream stays on the free websocket)">
                 <span className="stat-label">helius</span>
                 <span className="stat-value">
                   {status.helius.used_today.toLocaleString()}
@@ -58,9 +58,14 @@ export default function TopBar({
             )}
           </>
         )}
-        <span className={`status-pill status-${state}`}>
+        <span
+          className={`status-pill status-${state}`}
+          title={status ? status.listener : "connecting to mainnet"}
+        >
           <span className="status-dot" />
-          {status ? status.listener : "connecting…"}
+          <span className="status-pill-text">
+            {status ? status.listener : "connecting…"}
+          </span>
         </span>
         <button className="icon-button" onClick={onOpenSettings} aria-label="Alert settings" title="Alert settings">
           ⚙

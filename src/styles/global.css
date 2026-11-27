@@ -146,6 +146,17 @@ code {
   display: flex;
   align-items: center;
   gap: 18px;
+  flex-shrink: 1;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+/* Narrow windows: drop the stored/dropped counters before the status pill
+   truncates — the pill is the one control a new user must always read. */
+@media (max-width: 1180px) {
+  .topbar-right .stat:not(.stat-helius) {
+    display: none;
+  }
 }
 
 .stat {
@@ -182,6 +193,15 @@ code {
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--text-dim);
+  min-width: 0;
+  max-width: 360px;
+}
+
+.status-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .status-dot {

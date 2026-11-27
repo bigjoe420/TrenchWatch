@@ -73,8 +73,10 @@ npm install
 npm run tauri dev
 ```
 
-That's it — the app opens, connects to mainnet-beta, and starts surfacing
-launches within a minute. It runs entirely on your machine; there is no
+The first `tauri dev` builds the Rust backend from scratch — expect a few
+minutes of compiler output before the window opens; later starts are
+seconds. That's it — the app connects to mainnet-beta and starts
+surfacing launches within a minute of the window appearing. It runs entirely on your machine; there is no
 server to host and nothing to deploy. First run uses built-in defaults
 (public endpoint, no Discord, no Helius). To customize, copy
 `config.example.toml` to `config.toml` next to the app and edit — see the
