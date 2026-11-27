@@ -460,8 +460,51 @@ mod tests {
     }
 
     #[test]
-    fn v2_record_from_before_schema_addition_still_verifies() {
-        let dir = std::env::temp_dir().join(format!("tw-store-v2old-{}", std::process::id()));
+    fn analysis_with_float_evidence_survives_reload_verification() {
+        let dir = std::env::temp_dir().join(format!("tw-store-floats-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Percentages and ratios are f64 in flag evidence. Without
+        // serde_json's float_roundtrip feature, re-parsing such values can
+        // land on a neighboring f64 whose re-serialization differs from the
+        // sealed text — which the store's CRC then (correctly) rejects as
+        // tampering on the next boot. These values are chosen to trip the
+        // imprecise fast-parse path; the test fails without the feature.
+        let mut analysis = sample_analysis();
+        analysis.signature = "float-sig".to_string();
+        analysis.flags.push(crate::risk::RiskFlag {
+            signal: SignalKind::HolderConcentration,
+            severity: crate::risk::Severity::Warn,
+            explanation: "float evidence regression test".to_string(),
+            evidence: serde_json::json!({
+                "pct_of_supply": 33.333333333333336_f64,
+                "ratio": 2.675_f64,
+                "largest": 0.1_f64,
+            }),
+            field_guide_ref: "docs/FIELD_GUIDE.md#test".to_string(),
+            slot: 42,
+            observed_unix_ms: 1_700_000_000_000,
+        });
+
+        {
+            let mut store = EventStore::open(&dir).unwrap();
+            store.append_analysis(&analysis).unwrap();
+        }
+        {
+            let store = EventStore::open(&dir).unwrap();
+            let loaded = store.analysis_for("float-sig").expect("must verify and load");
+            let float_flag = loaded
+                .flags
+                .iter()
+                .find(|flag| flag.signal == SignalKind::HolderConcentration)
+                .expect("float flag must be present");
+            assert_eq!(float_flag.evidence["pct_of_supply"], 33.333333333333336_f64);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn v2_record_from_before_schema_addition_still_verifies() {        let dir = std::env::temp_dir().join(format!("tw-store-v2old-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
 
         // A schema-2 record written by a build that predates the graduation
