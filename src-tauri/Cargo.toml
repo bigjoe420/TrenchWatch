@@ -25,6 +25,13 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml = "0.8"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+# tokio-tungstenite disables rustls default features and does not select a
+# crypto provider — pick one explicitly or every TLS connect panics.
+rustls = { version = "0.23", features = ["ring"] }
+async-trait = "0.1"
+futures-util = "0.3"
+crc32fast = "1"
 
 # Non-goals (see docs/THREAT_MODEL.md): this crate must never depend on
 # keypair, signing, or transaction-building crates. Anything that could

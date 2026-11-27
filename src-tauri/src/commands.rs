@@ -1,0 +1,51 @@
+//! Tauri IPC surface (docs/ARCHITECTURE.md §2). Read-oriented: the frontend
+//! queries state; nothing here can mutate chain data or local config.
+
+use serde::Serialize;
+use tauri::State;
+
+use crate::listener::LaunchEvent;
+use crate::pipeline;
+use crate::AppState;
+
+#[derive(Debug, Serialize)]
+pub struct StatusResponse {
+    /// Plain-language listener state, shown verbatim in the UI.
+    pub listener: String,
+    pub events_stored: usize,
+    pub events_dropped: u64,
+    pub uptime_secs: u64,
+    pub endpoint: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EventsResponse {
+    pub events: Vec<LaunchEvent>,
+    pub total_stored: usize,
+}
+
+#[tauri::command]
+pub async fn get_status(state: State<'_, AppState>) -> Result<StatusResponse, String> {
+    let status = state.status.borrow().clone();
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    Ok(StatusResponse {
+        listener: status.plain_text(),
+        events_stored: store.len(),
+        events_dropped: pipeline::dropped_count(&state.dropped),
+        uptime_secs: state.started.elapsed().as_secs(),
+        endpoint: state.endpoint.clone(),
+    })
+}
+
+#[tauri::command]
+pub async fn get_recent_events(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<EventsResponse, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let events = store.recent(limit.unwrap_or(100));
+    Ok(EventsResponse {
+        events,
+        total_stored: store.len(),
+    })
+}

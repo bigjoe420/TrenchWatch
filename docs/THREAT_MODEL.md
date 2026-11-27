@@ -31,7 +31,7 @@ the architecture makes the capability impossible.
 
 | Non-goal | Structural enforcement |
 |----------|----------------------|
-| No trading / swapping | There is no transaction-building code. The RPC layer exposes **only a whitelist of read-only methods** (`logsSubscribe`, `getAccountInfo`, `getTokenSupply`, `getTokenAccountBalance`, `getSignaturesForAddress`, `getTransaction`, `getTokenLargestAccounts`, `getSlot`, `getProgramAccounts`). `sendTransaction`, `simulateTransaction` with signers, and any `sign*` method are not in the whitelist and there is no generic passthrough. |
+| No trading / swapping | There is no transaction-building code. The RPC layer exposes **only a whitelist of read-only methods** (`logsSubscribe`, `logsUnsubscribe`, `getAccountInfo`, `getTokenSupply`, `getTokenAccountBalance`, `getSignaturesForAddress`, `getTransaction`, `getTokenLargestAccounts`, `getSlot`, `getProgramAccounts`). `sendTransaction`, `simulateTransaction` with signers, and any `sign*` method are not in the whitelist and there is no generic passthrough. |
 | No private-key handling / custody | No keypair, seed-phrase, or signing crate may appear in `Cargo.toml`/`package.json`. No type representing secret key material exists. A private key pasted anywhere in the app has nothing to attach to. |
 | No transaction signing | Nothing in the dependency tree imports a signing API. The CSP (see below) additionally blocks dynamic script execution that could smuggle one in. |
 

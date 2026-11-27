@@ -30,13 +30,13 @@ component that touches the network (plus the optional Discord webhook).
 
 ## 2. Backend modules (`src-tauri/src/`)
 
-| Module (planned) | Responsibility |
+| Module | Responsibility |
 |--------------------|----------------|
-| `config` | Load `config.toml` (gitignored); fall back to built-in defaults. *(M1)* |
-| `provider` | The only RPC boundary. A `ChainProvider` trait hides the transport; v1 implements it over websocket JSON-RPC with a **read-only method whitelist**, reconnect with exponential backoff + jitter, and request coalescing. A Helius-backed implementation (API key + webhooks) must drop in with zero changes to callers. *(M2)* |
-| `listener` | `logsSubscribe` subscriptions filtered to Raydium / Orca / PumpSwap pool-creation programs + Pump.fun graduation; normalizes every hit into a `LaunchEvent`. *(M2)* |
-| `pipeline` | Bounded queue with backpressure; dedupes per mint; fans out to the risk engine; marks listener degraded on saturation instead of dropping new events. *(M2)* |
-| `store` | Append-oriented local persistence of events + evidence receipts; checksum on load. *(M2)* |
+| `config` | Load `config.toml` (gitignored); fall back to built-in defaults. *(M1, shipped)* |
+| `provider` | The only RPC boundary. `ChainProvider` trait hides the transport; v1 implements it over websocket JSON-RPC with a **read-only method whitelist** (enforced at request construction, guarded by tests) and server-confirmed subscription mapping. A Helius-backed implementation (API key + webhooks) drops in behind the same trait. *(M2, shipped)* |
+| `listener` | `logsSubscribe` mentions on Raydium AMM v4 / Orca Whirlpools / Pump.fun / PumpSwap; filters raw mentions (which fire on every swap) down to pool-creation instructions, excluding reverted transactions; reconnect with exponential backoff + jitter; plain-language status for the UI. *(M2, shipped)* |
+| `pipeline` | Bounded queue (backpressure: full submissions counted and surfaced as degraded, never blocking the listener); per-signature dedupe with an 8 192-entry ring; drains into the store. *(M2, shipped)* |
+| `store` | Append-only JSONL persistence with CRC32-envelope integrity; refuses to open on checksum mismatch. *(M2, shipped)* |
 | `risk` | Pure functions: `(fetched state, launch context) → Vec<RiskFlag>`. No network, no ambient clock — reproducible from receipts. *(M3)* |
 | `evidence` | Receipt type: `{flag, severity, explanation, evidence, field_guide_ref, slot, observed_at}`. Serialized into the store and shipped to UI + alerts verbatim. *(M3)* |
 | `alerts` | Desktop notifications + Discord webhook, receipts-style, escaped. *(M5)* |
