@@ -196,9 +196,9 @@ never stalls on a chat outage.
 
 ## Contributing
 
-Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Conventional
-commits, clippy-clean Rust, every risk signal must ship with evidence and
-tests.
+Contributions welcome — open an issue or PR and it will be handled case by
+case. Conventional commits, clippy-clean Rust, every risk signal must ship
+with evidence and tests.
 
 ## Disclaimer
 
