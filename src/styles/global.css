@@ -454,6 +454,15 @@ code {
   background: rgba(192, 132, 252, 0.09);
 }
 
+/* DEX-born badge: a lifecycle statement, same family as the graduation
+   chip — Solana-green, distinct from risk verdicts. */
+.chip-born {
+  margin-left: 8px;
+  color: var(--sol-green);
+  border-color: rgba(20, 241, 149, 0.35);
+  background: rgba(20, 241, 149, 0.08);
+}
+
 .graduation-note {
   font-size: 13px;
   line-height: 1.55;

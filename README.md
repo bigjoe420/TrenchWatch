@@ -23,7 +23,9 @@ ingestion under rate limits, account parsing, and evidence-backed heuristics.
 - **Detects graduations**: when a launch's liquidity migrates from the
   pump.fun bonding curve to a PumpSwap pool, TrenchWatch links the migration
   to the original launch by token mint — the birth verdict and baggage
-  follow the token onto the DEX.
+  follow the token onto the DEX. Tokens created directly on a DEX pool
+  (increasingly the norm on PumpSwap AMM) are flagged "born on DEX" instead —
+  no curve, no graduation, and the pool-creation tx is the birth receipt.
 - **Shows** a dense mission-control dashboard: live table, detail drawer with
   full evidence receipts, verdict/lifecycle filters, a "New on DEXs" view
   for freshly graduated tokens.

@@ -139,6 +139,7 @@ export default function App() {
             <option value="all">every stage</option>
             <option value="launches">launches only</option>
             <option value="graduated">graduated — new on DEXs</option>
+            <option value="dex_born">born on a DEX — no curve</option>
           </select>
         </label>
 

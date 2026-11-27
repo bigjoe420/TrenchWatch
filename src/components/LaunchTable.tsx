@@ -5,8 +5,9 @@ import { maxSeverity } from "../lib/verdict";
 export interface TableFilters {
   program: string; // "all" or an event program id
   severity: "all" | Severity | "none";
-  /** "all" = everything; "launches" = not yet graduated; "graduated" = new on DEXs. */
-  stage: "all" | "launches" | "graduated";
+  /** "all" = everything; "launches" = not yet graduated; "graduated" = new on DEXs;
+   *  "dex_born" = created directly on a DEX pool (no bonding-curve phase). */
+  stage: "all" | "launches" | "graduated" | "dex_born";
   hideFlagged: boolean;
 }
 
@@ -64,6 +65,14 @@ export default function LaunchTable({
       if (filters.hideFlagged && analysis.flags.length > 0) return false;
       if (filters.stage === "graduated" && !analysis.graduation) return false;
       if (filters.stage === "launches" && analysis.graduation) return false;
+      // DEX-born: the pool-creation tx IS the token's birth — tokens created
+      // directly on a DEX (mostly PumpSwap AMM) never had a curve to leave.
+      if (
+        filters.stage === "dex_born" &&
+        (analysis.graduation || programLabel === "Pump.fun" || !programLabel)
+      ) {
+        return false;
+      }
       return true;
     });
 
@@ -120,6 +129,14 @@ export default function LaunchTable({
                       title={`Graduated to ${analysis.graduation.venue_label} at slot ${analysis.graduation.slot.toLocaleString()} — migration tx ${analysis.graduation.signature}`}
                     >
                       🎓 {analysis.graduation.venue_label}
+                    </span>
+                  )}
+                  {!analysis.graduation && programLabel && programLabel !== "Pump.fun" && (
+                    <span
+                      className="chip chip-born"
+                      title={`Born directly on ${programLabel} — no bonding-curve phase, so no graduation to wait for. The pool-creation transaction is the birth receipt.`}
+                    >
+                      ⚡ born on {programLabel}
                     </span>
                   )}
                 </td>
