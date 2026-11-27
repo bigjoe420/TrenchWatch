@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrenchWatch × Helius — minimal API demo</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <h1>three calls, one API key</h1>
+        <p class="lede">
+          The smallest honest Helius demo: a plain JSON-RPC call, and two DAS
+          (Digital Asset Standard) reads — the same surface TrenchWatch itself
+          uses. No framework, no SDK, fetch only.
+        </p>
+        <p id="key-status" class="key-status">checking for a key…</p>
+      </header>
+
+      <section class="cards" id="cards">
+        <!-- Cards are built by src/main.ts. -->
+      </section>
+
+      <footer class="foot">
+        Key comes from <code>.env.local</code> (<code>VITE_HELIUS_API_KEY</code>),
+        never from source. Every failure state is shown as-is — HTTP status,
+        JSON-RPC error, or timeout — instead of being swallowed.
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

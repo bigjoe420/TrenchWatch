@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { updateAlertsConfig } from "../lib/ipc";
+import { getRpcSetupStatus, setApiKey, updateAlertsConfig } from "../lib/ipc";
 import type { AlertConfig, Severity } from "../lib/types";
 
 export default function SettingsDrawer({
@@ -11,13 +11,26 @@ export default function SettingsDrawer({
   onClose: () => void;
 }) {
   const [config, setConfig] = useState<AlertConfig>(initial);
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [keyOnFile, setKeyOnFile] = useState<boolean | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    getRpcSetupStatus()
+      .then((s) => setKeyOnFile(s.api_key_configured))
+      .catch(() => setKeyOnFile(null));
+  }, []);
 
   const save = async () => {
     setStatus("saving");
     setError("");
     try {
+      if (apiKeyDraft.trim().length > 0) {
+        await setApiKey(apiKeyDraft); // write-only; applies live, never read back
+        setKeyOnFile(apiKeyDraft.trim().length > 0);
+        setApiKeyDraft("");
+      }
       await updateAlertsConfig(config);
       setStatus("saved");
     } catch (e) {
@@ -31,9 +44,9 @@ export default function SettingsDrawer({
       <aside className="drawer drawer-narrow" onClick={(e) => e.stopPropagation()}>
         <header className="drawer-header">
           <div>
-            <h2>Alerts</h2>
+            <h2>Settings</h2>
             <p className="drawer-verdict">
-              Get notified when a launch is flagged at or above your chosen severity.
+              Helius key, alert routing, and thresholds — saved locally, applied immediately.
             </p>
           </div>
           <button className="drawer-close" onClick={onClose} aria-label="Close settings">
@@ -42,6 +55,30 @@ export default function SettingsDrawer({
         </header>
 
         <section className="drawer-section">
+          <h3>Helius</h3>
+          <label className="settings-row">
+            <span className="settings-label">api key</span>
+            <input
+              type="password"
+              className="settings-input mono"
+              placeholder="leave empty to keep the current key"
+              value={apiKeyDraft}
+              onChange={(e) => setApiKeyDraft(e.target.value)}
+              spellCheck={false}
+            />
+            <em className="settings-hint">
+              {keyOnFile === null
+                ? "Key status unknown."
+                : keyOnFile
+                  ? "A key is on file — enrichment is active. Paste above to replace it."
+                  : "No key on file — analysis reads use the public endpoint. Paste a key to enable Helius enrichment."}{" "}
+              Write-only: it is never displayed or read back.
+            </em>
+          </label>
+        </section>
+
+        <section className="drawer-section">
+          <h3>Alerts</h3>
           <label className="settings-row settings-toggle">
             <input
               type="checkbox"
