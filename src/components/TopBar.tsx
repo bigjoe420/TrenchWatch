@@ -45,6 +45,17 @@ export default function TopBar({
               <span className="stat-label">uptime</span>
               <span className="stat-value">{formatDuration(status.uptime_secs)}</span>
             </span>
+            {status.helius.enabled && (
+              <span className="stat" title="Paid Helius enrichment calls used today (reads only; the launch stream stays on the free websocket)">
+                <span className="stat-label">helius</span>
+                <span className="stat-value">
+                  {status.helius.used_today.toLocaleString()}
+                  {status.helius.daily_cap > 0
+                    ? ` / ${status.helius.daily_cap.toLocaleString()}`
+                    : " / ∞"}
+                </span>
+              </span>
+            )}
           </>
         )}
         <span className={`status-pill status-${state}`}>

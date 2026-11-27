@@ -40,10 +40,12 @@ before any functional code.
 ```
 
 - Rust backend (Tauri v2) owns all chain I/O, analysis, storage, alerting.
-- `ChainProvider` trait isolates RPC behind one interface — swapping the
-  free public endpoint for a Helius API key + webhooks later is a
-  config-level change, zero refactor. Details:
-  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- `ChainProvider` trait isolates RPC behind one interface. The launch
+  stream rides the free public websocket; set `rpc.api_key` and the
+  analysis reads (parsed transactions, mint accounts, holders) switch to
+  metered Helius calls with a configurable daily cap and automatic
+  fallback to the public endpoint — a config-level change, zero refactor.
+  Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - React + TypeScript frontend, no telemetry, CSP-locked.
 
 ## Quickstart (~10 minutes on a fresh Windows machine)
@@ -71,11 +73,24 @@ key is documented in [config.example.toml](config.example.toml):
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `rpc.ws_url` | public mainnet-beta endpoint | WebSocket RPC URL. A dedicated provider (e.g. Helius) improves reliability. |
-| `monitor.desktop_notifications` | `true` | Notify on each launch passing filters. |
+| `rpc.ws_url` | public mainnet-beta endpoint | WebSocket RPC URL. The launch stream always rides this. |
+| `rpc.api_key` | `""` | Optional Helius API key. When set, analysis reads switch to metered Helius calls; empty = public endpoint for everything. |
+| `rpc.daily_credit_cap` | `100000` | Daily budget for Helius read calls (`0` = unlimited, not recommended). At the cap the app falls back to the public endpoint. |
 | `monitor.min_liquidity_usd` | `0` | Liquidity floor for surfacing launches. |
+| `alerts.desktop_notifications` | `true` | Desktop notification on flagged launches at or above `alerts.min_severity`. |
+| `alerts.min_severity` | `"critical"` | Lowest severity that alerts: `critical`, `warn`, or `info`. |
 | `alerts.discord_webhook_url` | `""` | Optional Discord webhook; empty disables. |
 | `storage.store_dir` | `"store"` | Local event store location. |
+
+### Optional: Helius enrichment
+
+1. Copy your API key into `api_key` in `config.toml` (next to the app data
+   directory, already gitignored — never the repo).
+2. Restart the app. The top bar shows `helius: used / cap` counting read
+   calls for the day; the launch stream stays on the free websocket either
+   way.
+3. If Helius errors or the cap is hit, reads fall back to the public
+   endpoint automatically — analysis never stalls.
 
 ## Docs
 

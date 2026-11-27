@@ -33,7 +33,7 @@ component that touches the network (plus the optional Discord webhook).
 | Module | Responsibility |
 |--------------------|----------------|
 | `config` | Load `config.toml` (gitignored); fall back to built-in defaults. *(M1, shipped)* |
-| `provider` | The only RPC boundary. `ChainProvider` trait hides the transport; v1 implements it over websocket JSON-RPC with a **read-only method whitelist** (enforced at request construction, guarded by tests) and server-confirmed subscription mapping. A Helius-backed implementation (API key + webhooks) drops in behind the same trait. *(M2, shipped)* |
+| `provider` | The only RPC boundary. `ChainProvider` trait hides the transport; implemented over websocket JSON-RPC with a **read-only method whitelist** (enforced at request construction, guarded by tests) and server-confirmed subscription mapping. When `rpc.api_key` is set, one-shot reads route through `mainnet.helius-rpc.com` under a shared metered budget (`HeliusMeter`: per-day cap, rollover, automatic per-call fallback to the public endpoint); streaming stays on the public websocket. *(M2, shipped; metered reads shipped with the Helius phase)* |
 | `listener` | `logsSubscribe` mentions on Raydium AMM v4 / Orca Whirlpools / Pump.fun / PumpSwap; filters raw mentions (which fire on every swap) down to pool-creation instructions, excluding reverted transactions; reconnect with exponential backoff + jitter; plain-language status for the UI. *(M2, shipped)* |
 | `pipeline` | Bounded queue (backpressure: full submissions counted and surfaced as degraded, never blocking the listener); per-signature dedupe with an 8 192-entry ring; drains into the store. *(M2, shipped)* |
 | `store` | Append-only JSONL persistence with CRC32-envelope integrity; refuses to open on checksum mismatch. *(M2, shipped)* |
@@ -74,8 +74,9 @@ React + TypeScript + Vite, no UI framework beyond hand-rolled CSS
 ## 5. Configuration
 
 Single `config.toml` (see `config.example.toml` for every key). No keys in
-code; the file is gitignored. The provider reads only `rpc.ws_url`, keeping
-the Helius swap a config-level change.
+code; the file is gitignored. The provider reads `rpc.ws_url` (streaming +
+public read fallback) and, when present, `rpc.api_key` + `rpc.daily_credit_cap`
+for the metered Helius read path — the swap is a config-level change.
 
 ## 6. Testing strategy
 

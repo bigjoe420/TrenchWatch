@@ -21,14 +21,15 @@ pub fn spawn(
     store: Arc<Mutex<EventStore>>,
     ws_url: String,
     alerts: Arc<Alerts>,
+    helius: Option<Arc<crate::provider::HeliusMeter>>,
 ) -> (mpsc::Sender<LaunchEvent>, impl Future<Output = ()>) {
     let (tx, mut rx) = mpsc::channel::<LaunchEvent>(256);
 
     let task = async move {
-        let mut conn = connect_with_retry(&ws_url).await;
+        let mut conn = connect_with_retry(&ws_url, &helius).await;
         while let Some(event) = rx.recv().await {
             if conn.is_none() {
-                conn = connect_with_retry(&ws_url).await;
+                conn = connect_with_retry(&ws_url, &helius).await;
             }
             let Some(provider) = conn.as_mut() else {
                 tracing::warn!(signature = %event.signature, "no provider; skipping analysis");
@@ -78,10 +79,13 @@ pub fn spawn(
     (tx, task)
 }
 
-async fn connect_with_retry(ws_url: &str) -> Option<WsProvider> {
+async fn connect_with_retry(
+    ws_url: &str,
+    helius: &Option<Arc<crate::provider::HeliusMeter>>,
+) -> Option<WsProvider> {
     let mut attempt = 0u32;
     loop {
-        match WsProvider::connect(ws_url).await {
+        match WsProvider::connect_with_helius(ws_url, helius.clone()).await {
             Ok(provider) => {
                 tracing::info!("analysis provider connected");
                 return Some(provider);

@@ -2,8 +2,10 @@
 //! directory; `config.example.toml` in the repo documents every key.
 //!
 //! Security note (docs/THREAT_MODEL.md): the only outbound network targets
-//! are the RPC `ws_url` and the optional Discord webhook. Neither is fetched
-//! from remote content — both are operator-supplied configuration.
+//! are the RPC `ws_url`, the optional Discord webhook, and — when an API
+//! key is configured — `mainnet.helius-rpc.com` for metered read-only
+//! enrichment. None is fetched from remote content; all are
+//! operator-supplied configuration.
 
 use std::path::{Path, PathBuf};
 

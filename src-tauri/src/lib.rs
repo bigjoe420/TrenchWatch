@@ -25,6 +25,8 @@ pub struct AppState {
     pub endpoint: String,
     pub config: Mutex<config::Config>,
     pub app_data_dir: PathBuf,
+    /// Paid-enrichment budget; `None` = public endpoint for everything.
+    pub helius: Option<Arc<provider::HeliusMeter>>,
 }
 
 pub fn run() -> anyhow::Result<()> {
@@ -57,8 +59,27 @@ pub fn run() -> anyhow::Result<()> {
             let alerts_config = alerts::SharedAlertConfig::new(Mutex::new(config.alerts.clone()));
             let alerts = Arc::new(alerts::Alerts::new(alerts_config, app.handle().clone()));
 
-            let (analysis_tx, analysis_task) =
-                analysis::spawn(store.clone(), config.rpc.ws_url.clone(), alerts);
+            // Paid enrichment budget: only built when a key is configured,
+            // so the app runs entirely on the free public RPC otherwise.
+            let helius = if config.rpc.api_key.trim().is_empty() {
+                None
+            } else {
+                tracing::info!(
+                    cap = config.rpc.daily_credit_cap,
+                    "helius enrichment enabled (key loaded from config.toml)"
+                );
+                Some(Arc::new(provider::HeliusMeter::new(
+                    &config.rpc.api_key,
+                    config.rpc.daily_credit_cap,
+                )))
+            };
+
+            let (analysis_tx, analysis_task) = analysis::spawn(
+                store.clone(),
+                config.rpc.ws_url.clone(),
+                alerts,
+                helius.clone(),
+            );
             tauri::async_runtime::spawn(analysis_task);
 
             let (handle, sink_task) =
@@ -76,6 +97,7 @@ pub fn run() -> anyhow::Result<()> {
                 endpoint: config.rpc.ws_url.clone(),
                 config: Mutex::new(config),
                 app_data_dir: app_data.clone(),
+                helius,
             });
             tracing::info!("trenchwatch backend up");
             Ok(())

@@ -110,6 +110,29 @@ financial harm without touching the code.
   advice"; the field guide documents each signal's false-positive rate.
   TrenchWatch *never* says "safe" — it says "no flags found as of slot N".
 
+### A6. Helius API key handling
+The optional `rpc.api_key` unlocks paid read-only enrichment. The key is a
+secret the app must spend without ever exposing.
+
+- **Storage.** `config.toml` in the app data directory only — gitignored by
+  `.gitignore` from day one; the example file ships an empty value. It never
+  enters the repo, the frontend, or the event store.
+- **Exposure.** The key travels only inside the HTTPS request URL to
+  `mainnet.helius-rpc.com`. It is never written to logs, error strings, or
+  `Debug` output (the meter redacts it), and the frontend receives usage
+  counts only — never the key, never the endpoint URL.
+- **Scope.** Helius receives exactly the same whitelisted read-only methods
+  as the public endpoint (`RpcRequest` is enforced before routing), so a
+  compromised or misconfigured key cannot turn the app into a signing or
+  sending client.
+- **Spend control.** Every Helius call is counted against `daily_credit_cap`
+  per day; at the cap the app falls back to the public endpoint and keeps
+  working, logging the switch once per day. A Helius failure falls back the
+  same way per call.
+- **Accepted risk.** Helius (like any RPC operator) sees which transactions
+  and accounts the operator queries — the fingerprinting tradeoff of §A2,
+  now paid instead of free.
+
 ## 4. Trust boundaries
 
 ```
@@ -136,8 +159,9 @@ financial harm without touching the code.
    (CSP `connect-src` whitelist: self + IPC only). The UI renders data from
    the backend, and any external link (Solscan) opens in the system browser,
    never an in-app webview.
-4. **Outbound boundary (app → Discord):** exactly one operator-configured
-   URL.
+4. **Outbound boundary (app → Discord / Helius):** the Discord webhook is
+   exactly one operator-configured URL; Helius is contacted only when an API
+   key is configured, over the same whitelisted read-only requests (§A6).
 
 ## 5. Webview / UI surface
 

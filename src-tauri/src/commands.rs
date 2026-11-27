@@ -18,6 +18,16 @@ pub struct StatusResponse {
     pub events_dropped: u64,
     pub uptime_secs: u64,
     pub endpoint: String,
+    /// Paid-enrichment budget; disabled when no API key is configured.
+    pub helius: HeliusStatus,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HeliusStatus {
+    pub enabled: bool,
+    pub used_today: u64,
+    /// 0 = unlimited (not recommended).
+    pub daily_cap: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -30,12 +40,26 @@ pub struct EventsResponse {
 pub async fn get_status(state: State<'_, AppState>) -> Result<StatusResponse, String> {
     let status = state.status.borrow().clone();
     let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let helius = state
+        .helius
+        .as_ref()
+        .map(|meter| HeliusStatus {
+            enabled: meter.enabled(),
+            used_today: meter.used_today(),
+            daily_cap: meter.cap(),
+        })
+        .unwrap_or(HeliusStatus {
+            enabled: false,
+            used_today: 0,
+            daily_cap: 0,
+        });
     Ok(StatusResponse {
         listener: status.plain_text(),
         events_stored: store.len(),
         events_dropped: pipeline::dropped_count(&state.dropped),
         uptime_secs: state.started.elapsed().as_secs(),
         endpoint: state.endpoint.clone(),
+        helius,
     })
 }
 

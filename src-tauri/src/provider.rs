@@ -14,6 +14,9 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
@@ -206,6 +209,108 @@ pub trait ChainProvider: Send {
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
+/// Shared, reconnect-safe budget for paid Helius read calls.
+///
+/// Streaming stays on the free public websocket by design; the key is
+/// spent only on the targeted read calls the analysis stage makes
+/// (parsed transactions, mint accounts, largest holders). Every spend is
+/// counted against `cap` per day; when the cap is reached the provider
+/// falls back to the public endpoint so the app keeps working.
+///
+/// The key is never logged and never appears in `Debug` output.
+pub struct HeliusMeter {
+    api_key: String,
+    cap: u64,
+    state: Mutex<MeterState>,
+    /// True once per day when the cap-block has been logged.
+    cap_logged: AtomicBool,
+}
+
+#[derive(Debug)]
+struct MeterState {
+    /// Days since the Unix epoch — compared, not displayed, so timezone
+    /// and calendar math never enter the picture.
+    day: u64,
+    used: u64,
+}
+
+impl std::fmt::Debug for HeliusMeter {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HeliusMeter")
+            .field("api_key", &"[redacted]")
+            .field("cap", &self.cap)
+            .field("state", &self.state)
+            .finish()
+    }
+}
+
+impl HeliusMeter {
+    pub fn new(api_key: &str, cap: u64) -> Self {
+        Self {
+            api_key: api_key.trim().to_string(),
+            cap,
+            state: Mutex::new(MeterState {
+                day: today(),
+                used: 0,
+            }),
+            cap_logged: AtomicBool::new(false),
+        }
+    }
+
+    fn today() -> u64 {
+        today()
+    }
+
+    fn endpoint(&self) -> String {
+        format!("https://mainnet.helius-rpc.com/?api-key={}", self.api_key)
+    }
+
+    /// Spend one call if the daily budget allows. Rolls the counter over at
+    /// each new day. `cap == 0` means unlimited (not recommended).
+    pub fn try_spend(&self) -> bool {
+        let Ok(mut state) = self.state.lock() else {
+            return false; // poisoned meter must never block the public path
+        };
+        let today = Self::today();
+        if state.day != today {
+            state.day = today;
+            state.used = 0;
+            self.cap_logged.store(false, Ordering::Relaxed);
+        }
+        if self.cap != 0 && state.used >= self.cap {
+            return false;
+        }
+        state.used += 1;
+        true
+    }
+
+    pub fn used_today(&self) -> u64 {
+        self.state.lock().map(|state| state.used).unwrap_or(0)
+    }
+
+    pub fn cap(&self) -> u64 {
+        self.cap
+    }
+
+    pub fn enabled(&self) -> bool {
+        !self.api_key.is_empty()
+    }
+
+    /// Log the cap-block at most once per day; returns true if this call
+    /// performed the logging.
+    pub fn log_cap_once(&self) -> bool {
+        !self.cap_logged.swap(true, Ordering::Relaxed)
+    }
+}
+
+fn today() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() / 86_400)
+        .unwrap_or(0)
+}
+
 /// Websocket JSON-RPC provider for a standard Solana RPC endpoint.
 ///
 /// Streaming (`logsSubscribe`/`next_event`) rides the websocket; the
@@ -216,6 +321,8 @@ pub struct WsProvider {
     http_url: String,
     http: reqwest::Client,
     stream: WsStream,
+    /// Paid read budget; `None` = public endpoint for everything.
+    helius: Option<Arc<HeliusMeter>>,
     /// subscription id (== request id we used) -> program id
     subscriptions: HashMap<u64, String>,
     next_id: u64,
@@ -223,6 +330,13 @@ pub struct WsProvider {
 
 impl WsProvider {
     pub async fn connect(ws_url: &str) -> Result<Self, ProviderError> {
+        Self::connect_with_helius(ws_url, None).await
+    }
+
+    pub async fn connect_with_helius(
+        ws_url: &str,
+        helius: Option<Arc<HeliusMeter>>,
+    ) -> Result<Self, ProviderError> {
         // rustls refuses to auto-pick a crypto provider when the crate
         // graph leaves the choice ambiguous; pin `ring` explicitly.
         // install_default is process-global and fails harmlessly if another
@@ -242,6 +356,7 @@ impl WsProvider {
             http_url,
             http,
             stream,
+            helius,
             subscriptions: HashMap::new(),
             next_id: 1,
         })
@@ -252,23 +367,61 @@ impl WsProvider {
     }
 
     /// Send one whitelisted read-only request over HTTP and return the
-    /// `result` field. HTTP keeps no connection state, so this is safe to
-    /// call concurrently with the streaming loop on the same provider.
+    /// `result` field. When a Helius budget is configured and has headroom
+    /// the call is routed (and metered) there; any Helius failure falls
+    /// back to the public endpoint so a paid-service hiccup never stalls
+    /// analysis. HTTP keeps no connection state, so this is safe to call
+    /// concurrently with the streaming loop on the same provider.
     async fn call(&mut self, method: &str, params: Value) -> Result<Value, ProviderError> {
         let request = RpcRequest::new(self.next_id, method, params)?;
         self.next_id += 1;
+
+        if let Some(meter) = &self.helius {
+            if meter.enabled() && meter.try_spend() {
+                let started = std::time::Instant::now();
+                match self.post(&meter.endpoint(), &request).await {
+                    Ok(response) => {
+                        tracing::debug!(
+                            method,
+                            latency_ms = started.elapsed().as_millis() as u64,
+                            "helius read"
+                        );
+                        return Ok(response);
+                    }
+                    Err(error) => {
+                        // Spend is already counted; the fallback call rides
+                        // the free endpoint so nothing is lost.
+                        tracing::warn!(%error, method, "helius read failed; using public endpoint");
+                    }
+                }
+            } else if meter.enabled() && meter.log_cap_once() {
+                tracing::info!(
+                    used = meter.used_today(),
+                    cap = meter.cap(),
+                    "helius daily cap reached; enrichment reads use the public endpoint until tomorrow"
+                );
+            }
+        }
+
+        self.post(&self.http_url.clone(), &request).await
+    }
+
+    /// One POST of a whitelisted request; returns the `result` field.
+    async fn post(&self, url: &str, request: &RpcRequest) -> Result<Value, ProviderError> {
         let response: Value = self
             .http
-            .post(&self.http_url)
+            .post(url)
             .json(&request.to_json())
             .send()
             .await
-            .map_err(|e| ProviderError::Protocol(format!("{method}: http send: {e}")))?
+            .map_err(|e| ProviderError::Protocol(format!("{}: http send: {e}", request.method)))?
             .json()
             .await
-            .map_err(|e| ProviderError::Protocol(format!("{method}: http decode: {e}")))?;
+            .map_err(|e| {
+                ProviderError::Protocol(format!("{}: http decode: {e}", request.method))
+            })?;
         if let Some(error) = response.get("error") {
-            return Err(ProviderError::Rpc(format!("{method}: {error}")));
+            return Err(ProviderError::Rpc(format!("{}: {error}", request.method)));
         }
         Ok(response.get("result").cloned().unwrap_or(Value::Null))
     }
@@ -556,5 +709,52 @@ mod tests {
                 "{method} should be allowed"
             );
         }
+    }
+
+    #[test]
+    fn meter_counts_spend_until_cap() {
+        let meter = HeliusMeter::new("test-key", 2);
+        assert!(meter.enabled());
+        assert!(meter.try_spend());
+        assert!(meter.try_spend());
+        assert_eq!(meter.used_today(), 2);
+        // cap reached: further spends denied, public fallback takes over
+        assert!(!meter.try_spend());
+        assert_eq!(meter.used_today(), 2);
+    }
+
+    #[test]
+    fn meter_cap_of_zero_is_unlimited() {
+        let meter = HeliusMeter::new("test-key", 0);
+        for _ in 0..10 {
+            assert!(meter.try_spend());
+        }
+        assert_eq!(meter.used_today(), 10);
+    }
+
+    #[test]
+    fn meter_debug_never_prints_the_key() {
+        let meter = HeliusMeter::new("super-secret-key", 5);
+        let text = format!("{meter:?}");
+        assert!(!text.contains("super-secret-key"));
+        assert!(text.contains("[redacted]"));
+    }
+
+    #[test]
+    fn meter_endpoint_carries_the_key_as_a_query_param() {
+        let meter = HeliusMeter::new("abc123", 5);
+        assert_eq!(
+            meter.endpoint(),
+            "https://mainnet.helius-rpc.com/?api-key=abc123"
+        );
+    }
+
+    #[test]
+    fn cap_block_logs_at_most_once() {
+        let meter = HeliusMeter::new("test-key", 1);
+        assert!(meter.try_spend());
+        assert!(!meter.try_spend());
+        assert!(meter.log_cap_once());
+        assert!(!meter.log_cap_once());
     }
 }

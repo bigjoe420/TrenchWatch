@@ -45,12 +45,20 @@ export interface LaunchEvent {
   detected_unix_ms: number;
 }
 
+export interface HeliusStatus {
+  enabled: boolean;
+  used_today: number;
+  /** 0 = unlimited (not recommended). */
+  daily_cap: number;
+}
+
 export interface StatusResponse {
   listener: string;
   events_stored: number;
   events_dropped: number;
   uptime_secs: number;
   endpoint: string;
+  helius: HeliusStatus;
 }
 
 export interface AlertConfig {
