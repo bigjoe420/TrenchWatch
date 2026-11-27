@@ -69,6 +69,10 @@ pub struct AlertConfig {
     pub min_severity: Severity,
     /// Optional Discord webhook URL. Empty = disabled.
     pub discord_webhook_url: String,
+    /// Optional separate webhook for flag (risk) alerts. Empty = flag alerts
+    /// fall back to `discord_webhook_url`. Graduation alerts always use
+    /// `discord_webhook_url` so the two channels stay cleanly separated.
+    pub discord_critical_webhook_url: String,
     /// Graduation alerts: a token moving from its launchpad to a real DEX
     /// pool (e.g. Pump.fun → PumpSwap) is headline news, so it alerts even
     /// when no risk flag fired. Default: on.
@@ -81,6 +85,7 @@ impl Default for AlertConfig {
             desktop_notifications: true,
             min_severity: Severity::Critical,
             discord_webhook_url: String::new(),
+            discord_critical_webhook_url: String::new(),
             graduation_alerts: true,
         }
     }
@@ -89,17 +94,20 @@ impl Default for AlertConfig {
 impl AlertConfig {
     /// A webhook URL is accepted only when empty or an https Discord webhook.
     pub fn validate(&self) -> Result<(), String> {
-        let url = self.discord_webhook_url.trim();
-        if url.is_empty() {
-            return Ok(());
+        for url in [&self.discord_webhook_url, &self.discord_critical_webhook_url] {
+            let url = url.trim();
+            if url.is_empty() {
+                continue;
+            }
+            if !(url.starts_with("https://discord.com/api/webhooks/")
+                || url.starts_with("https://discordapp.com/api/webhooks/"))
+            {
+                return Err(
+                    "Discord webhook must start with https://discord.com/api/webhooks/".to_string(),
+                );
+            }
         }
-        if url.starts_with("https://discord.com/api/webhooks/")
-            || url.starts_with("https://discordapp.com/api/webhooks/")
-        {
-            Ok(())
-        } else {
-            Err("Discord webhook must start with https://discord.com/api/webhooks/".to_string())
-        }
+        Ok(())
     }
 }
 

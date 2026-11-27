@@ -67,7 +67,14 @@ impl Alerts {
             self.desktop(analysis);
         }
         if !config.discord_webhook_url.is_empty() {
-            self.discord(analysis, &config.discord_webhook_url).await;
+            // Flag alerts prefer the dedicated critical webhook when one is
+            // configured; otherwise they fall back to the main webhook.
+            let webhook = if config.discord_critical_webhook_url.is_empty() {
+                &config.discord_webhook_url
+            } else {
+                &config.discord_critical_webhook_url
+            };
+            self.discord(analysis, webhook).await;
         }
     }
 

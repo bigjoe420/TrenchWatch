@@ -102,6 +102,23 @@ export default function SettingsDrawer({
               anywhere.
             </em>
           </label>
+
+          <label className="settings-row">
+            <span className="settings-label">critical-flags webhook</span>
+            <input
+              type="text"
+              className="settings-input mono"
+              placeholder="https://discord.com/api/webhooks/… (empty = same as above)"
+              value={config.discord_critical_webhook_url}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, discord_critical_webhook_url: e.target.value }))
+              }
+              spellCheck={false}
+            />
+            <em className="settings-hint">
+              Flag alerts post here instead; graduation alerts always go to the webhook above.
+            </em>
+          </label>
         </section>
 
         <div className="settings-actions">

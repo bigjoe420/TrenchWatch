@@ -76,6 +76,8 @@ export interface AlertConfig {
   desktop_notifications: boolean;
   min_severity: Severity;
   discord_webhook_url: string;
+  /** Optional separate webhook for flag alerts; empty = fall back to discord_webhook_url. */
+  discord_critical_webhook_url: string;
   /** Announce graduations (launchpad → DEX pool) even when no risk flag fired. */
   graduation_alerts: boolean;
 }
