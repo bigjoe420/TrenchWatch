@@ -1,0 +1,37 @@
+[package]
+name = "trenchwatch"
+version = "0.1.0"
+description = "Real-time Solana launch monitor with explainable rug-pull risk scoring"
+authors = ["TrenchWatch contributors"]
+license = "MIT"
+repository = ""
+edition = "2021"
+
+[lib]
+name = "trenchwatch_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml = "0.8"
+
+# Non-goals (see docs/THREAT_MODEL.md): this crate must never depend on
+# keypair, signing, or transaction-building crates. Anything that could
+# move funds is out of the dependency tree by design.
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"

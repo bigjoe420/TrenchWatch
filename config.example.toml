@@ -1,0 +1,27 @@
+# TrenchWatch configuration.
+# Copy this file to `config.toml` and adjust. `config.toml` is gitignored
+# and must never contain real secrets you are not comfortable storing locally.
+
+[rpc]
+# WebSocket endpoint for Solana mainnet-beta. The free public endpoint works
+# for development; a dedicated provider (e.g. Helius) improves reliability.
+# Later phases swap this without code changes — see docs/ARCHITECTURE.md.
+ws_url = "wss://api.mainnet-beta.solana.com"
+
+[monitor]
+# Emit a desktop notification for every new launch that passes filters.
+desktop_notifications = true
+
+# Minimum pool liquidity (in USD) before a launch is surfaced in the UI
+# and eligible for alerts. 0 = surface everything.
+min_liquidity_usd = 0
+
+[alerts]
+# Optional Discord webhook for receipts-style launch alerts.
+# Leave empty to disable. The app only POSTs to this exact URL.
+discord_webhook_url = ""
+
+[storage]
+# Directory for the local event store (relative to the app data dir).
+# Overridable mostly for tests; leave default in normal use.
+store_dir = "store"

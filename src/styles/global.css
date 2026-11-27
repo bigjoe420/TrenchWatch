@@ -1,0 +1,88 @@
+/* Mission-control theme: dark, dense, high-contrast. */
+:root {
+  --bg: #0b0e14;
+  --bg-panel: #11151f;
+  --bg-elevated: #171c28;
+  --border: #232a3a;
+  --text: #d6deeb;
+  --text-dim: #7d8590;
+  --accent: #4cc2ff;
+  --warn: #ffb454;
+  --danger: #ff5c5c;
+  --ok: #3ecf8e;
+  --mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.status-pill {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+}
+
+.status-pill[data-state="idle"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.placeholder-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-dim);
+}
+
+.placeholder-panel h1 {
+  color: var(--text);
+  margin: 0;
+}
+
+.placeholder-panel code {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 4px;
+  color: var(--ok);
+}

@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a change or new signal
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What does this solve? Link an existing issue if any.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What would change? If it's a risk signal, sketch the evidence it would emit.
+    validations:
+      required: true
+  - type: checkboxes
+    id: non-goals
+    attributes:
+      label: Non-goals check
+      options:
+        - label: This does not involve trading, signing, keys, or wallet custody
+          required: true

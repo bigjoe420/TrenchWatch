@@ -1,0 +1,29 @@
+name: Bug report
+description: Something is wrong in TrenchWatch
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected vs. what you saw. Include log output if relevant.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of the app's version or the commit SHA you built from.
+  - type: input
+    id: rpc
+    attributes:
+      label: RPC endpoint type
+      description: e.g. public mainnet-beta, Helius, self-hosted. Do NOT paste keys.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I am not pasting any API keys or secrets
+          required: true

@@ -1,0 +1,32 @@
+# --- Local session journals (never commit) ---
+KIMI.md
+ROADMAP.md
+PROGRESS.md
+HANDOFF*.md
+*.local.md
+
+# --- Secrets & local config ---
+.env
+.env.*
+config.toml
+!config.example.toml
+
+# --- Rust / Tauri build output ---
+src-tauri/target/
+src-tauri/gen/
+
+# --- Node / frontend build output ---
+node_modules/
+dist/
+
+# --- OS & editor debris ---
+.DS_Store
+Thumbs.db
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# --- Test & coverage output ---
+coverage/
+*.profraw
