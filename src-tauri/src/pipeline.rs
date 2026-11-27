@@ -6,11 +6,11 @@
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 
 use crate::listener::LaunchEvent;
 use crate::store::{EventStore, StoreError};
@@ -35,17 +35,18 @@ impl PipelineHandle {
     }
 }
 
-/// Spawn the drain loop: dedupe by signature, persist to the store, then
-/// hand the launch to the analysis stage.
+/// Build the drain loop: dedupe by signature, persist to the store, then
+/// hand the launch to the analysis stage. Returns the future for the caller
+/// to spawn on its async runtime (Tauri setup has no Tokio context).
 pub fn spawn(
     store: Arc<Mutex<EventStore>>,
     capacity: usize,
     dropped: Arc<AtomicU64>,
     analysis_tx: mpsc::Sender<LaunchEvent>,
-) -> (PipelineHandle, JoinHandle<()>) {
+) -> (PipelineHandle, impl Future<Output = ()>) {
     let (tx, mut rx) = mpsc::channel::<LaunchEvent>(capacity);
 
-    let task = tokio::spawn(async move {
+    let task = async move {
         let mut seen: HashSet<String> = HashSet::new();
         let mut ring: VecDeque<String> = VecDeque::new();
         let mut analysis_closed = false;
@@ -77,7 +78,7 @@ pub fn spawn(
             }
         }
         tracing::info!("pipeline drained; sink stopping");
-    });
+    };
 
     (PipelineHandle { tx }, task)
 }

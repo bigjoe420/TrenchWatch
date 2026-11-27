@@ -2,11 +2,11 @@
 //! (one provider connection, reused; reconnects on transport failure), and
 //! persists the resulting analysis next to the event.
 
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
 use crate::enrich::analyze_launch;
@@ -14,13 +14,15 @@ use crate::listener::LaunchEvent;
 use crate::provider::WsProvider;
 use crate::store::{EventStore, StoreError};
 
+/// Returns the channel end for producers and the stage future for the
+/// caller to spawn on its async runtime (Tauri setup has no Tokio context).
 pub fn spawn(
     store: Arc<Mutex<EventStore>>,
     ws_url: String,
-) -> (mpsc::Sender<LaunchEvent>, JoinHandle<()>) {
+) -> (mpsc::Sender<LaunchEvent>, impl Future<Output = ()>) {
     let (tx, mut rx) = mpsc::channel::<LaunchEvent>(256);
 
-    let task = tokio::spawn(async move {
+    let task = async move {
         let mut conn = connect_with_retry(&ws_url).await;
         while let Some(event) = rx.recv().await {
             if conn.is_none() {
@@ -51,7 +53,7 @@ pub fn spawn(
             }
         }
         tracing::info!("analysis stage drained");
-    });
+    };
 
     (tx, task)
 }

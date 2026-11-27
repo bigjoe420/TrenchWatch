@@ -8,7 +8,6 @@
 
 use serde::Serialize;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
 use crate::pipeline::PipelineHandle;
@@ -142,13 +141,15 @@ pub fn to_launch_event(notification: LogNotification) -> Option<LaunchEvent> {
     })
 }
 
-/// Spawn the listen/reconnect loop. Runs until the app shuts down.
-pub fn spawn(
+/// Run the listen/reconnect loop; the caller spawns the returned future on
+/// its async runtime (Tauri setup has no Tokio context). Runs until the app
+/// shuts down.
+pub async fn spawn(
     ws_url: String,
     sink: PipelineHandle,
     status: tokio::sync::watch::Sender<ListenerStatus>,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
+) {
+    {
         let program_ids: Vec<&str> = POOL_PROGRAMS.iter().map(|(id, _)| *id).collect();
         let mut attempt: u32 = 0;
 
@@ -216,7 +217,7 @@ pub fn spawn(
                 }
             }
         }
-    })
+    }
 }
 
 #[cfg(test)]
