@@ -25,12 +25,18 @@ pub struct Config {
 pub struct RpcConfig {
     /// WebSocket URL of a Solana RPC endpoint (operator-supplied, config-only).
     pub ws_url: String,
+    /// Optional provider API key (e.g. Helius). Empty = public endpoint only.
+    pub api_key: String,
+    /// Daily credit budget for enrichment calls (0 = unlimited).
+    pub daily_credit_cap: u64,
 }
 
 impl Default for RpcConfig {
     fn default() -> Self {
         Self {
             ws_url: "wss://api.mainnet-beta.solana.com".to_string(),
+            api_key: String::new(),
+            daily_credit_cap: 100_000,
         }
     }
 }

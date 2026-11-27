@@ -7,6 +7,13 @@
 # for development; a dedicated provider (e.g. Helius) improves reliability.
 # Later phases swap this without code changes — see docs/ARCHITECTURE.md.
 ws_url = "wss://api.mainnet-beta.solana.com"
+# Optional provider API key. Empty = use the public endpoint for everything.
+# When set, the app uses it for targeted read-only enrichment calls only
+# (parsed transactions, asset/metadata lookups) with metering and a daily
+# cap — the launch stream itself stays on the free websocket.
+api_key = ""
+# Daily credit budget for enrichment calls (0 = unlimited — not recommended).
+daily_credit_cap = 100000
 
 [monitor]
 # Emit a desktop notification for every new launch that passes filters.
