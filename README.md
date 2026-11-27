@@ -5,6 +5,8 @@
   <img src="assets/logo-light.png" alt="TrenchWatch — Solana launch monitor" width="560">
 </picture>
 
+<img src="assets/hero.png" alt="TrenchWatch banner: radar sweep over Solana launches" width="100%">
+
 Real-time monitor for brand-new token launches on Solana mainnet-beta, with
 explainable rug-pull risk scoring. Every flag ships with plain-language
 evidence and an on-chain receipt you can verify yourself — no black-box
