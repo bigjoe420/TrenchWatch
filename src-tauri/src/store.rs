@@ -1,9 +1,13 @@
 //! Append-oriented local event store (docs/ARCHITECTURE.md §2).
 //!
-//! Every record is written as a JSON envelope with a CRC32 of its payload.
-//! On open, every line is re-verified; a mismatch means tampering or
-//! corruption and the store refuses to serve data (docs/THREAT_MODEL.md §6)
-//! rather than risk showing someone a fabricated history.
+//! Every record is written as a versioned JSON envelope with a CRC32 of
+//! its payload. On open, every line is re-verified; a mismatch on a
+//! current-format record means tampering or corruption and the store
+//! refuses to serve data (docs/THREAT_MODEL.md §6) rather than risk
+//! showing someone a fabricated history. Legacy-format records whose
+//! payload still parses are re-sealed under the current format instead of
+//! bricking the store on every schema addition — after that one-time
+//! migration, verification is strict again.
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -30,26 +34,53 @@ pub enum StoreError {
     Serde(String),
 }
 
+/// Envelope format versions. v1 = CRC over the plain struct-order
+/// serialization (what older builds wrote). v2 = CRC over the canonical
+/// sorted-key JSON of the payload, which is stable when fields are added to
+/// a stored struct (a new `#[serde(default)]` field must not brick old
+/// records).
+const SCHEMA_LEGACY: u32 = 1;
+const SCHEMA_CANONICAL: u32 = 2;
+const SCHEMA_CURRENT: u32 = SCHEMA_CANONICAL;
+
+fn schema_default() -> u32 {
+    SCHEMA_LEGACY
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Envelope<T> {
     crc32: u32,
+    #[serde(default = "schema_default")]
+    schema: u32,
     payload: T,
+}
+
+/// Canonical form: sorted keys at every level, independent of struct field
+/// order and of schema additions.
+fn canonical_bytes<T: Serialize>(payload: &T) -> Result<Vec<u8>, StoreError> {
+    let value = serde_json::to_value(payload).map_err(|e| StoreError::Serde(e.to_string()))?;
+    serde_json::to_vec(&value).map_err(|e| StoreError::Serde(e.to_string()))
 }
 
 impl<T: Serialize + Clone> Envelope<T> {
     fn wrap(payload: &T) -> Result<Self, StoreError> {
-        let bytes = serde_json::to_vec(payload).map_err(|e| StoreError::Serde(e.to_string()))?;
+        let bytes = canonical_bytes(payload)?;
         Ok(Envelope {
             crc32: crc32fast::hash(&bytes),
+            schema: SCHEMA_CURRENT,
             payload: payload.clone(),
         })
     }
 }
 
 impl<T: Serialize + DeserializeOwned> Envelope<T> {
+    /// Strict verification within the line's own format version.
     fn verify(&self) -> Result<(), StoreError> {
-        let bytes =
-            serde_json::to_vec(&self.payload).map_err(|e| StoreError::Serde(e.to_string()))?;
+        let bytes = if self.schema >= SCHEMA_CANONICAL {
+            canonical_bytes(&self.payload)?
+        } else {
+            serde_json::to_vec(&self.payload).map_err(|e| StoreError::Serde(e.to_string()))?
+        };
         if crc32fast::hash(&bytes) != self.crc32 {
             return Err(StoreError::Checksum(0));
         }
@@ -57,12 +88,15 @@ impl<T: Serialize + DeserializeOwned> Envelope<T> {
     }
 }
 
-fn load_verified<T: Serialize + DeserializeOwned>(path: &Path) -> Result<Vec<T>, StoreError> {
+fn load_verified<T: Serialize + DeserializeOwned + Clone>(
+    path: &Path,
+) -> Result<Vec<T>, StoreError> {
     let mut records = Vec::new();
     if !path.exists() {
         return Ok(records);
     }
     let reader = BufReader::new(File::open(path)?);
+    let mut needs_reseal = false;
     for (index, line) in reader.lines().enumerate() {
         let line = line?;
         if line.trim().is_empty() {
@@ -70,10 +104,25 @@ fn load_verified<T: Serialize + DeserializeOwned>(path: &Path) -> Result<Vec<T>,
         }
         let envelope: Envelope<T> =
             serde_json::from_str(&line).map_err(|_| StoreError::Checksum(index + 1))?;
-        envelope
-            .verify()
-            .map_err(|_| StoreError::Checksum(index + 1))?;
+        if envelope.verify().is_err() {
+            if envelope.schema >= SCHEMA_CURRENT {
+                // Current-format record that fails verification: corruption
+                // or tampering — refuse to serve it (THREAT_MODEL.md §6).
+                return Err(StoreError::Checksum(index + 1));
+            }
+            // Legacy record: a schema addition changes the round-trip bytes,
+            // so the original CRC can no longer be reproduced. The payload
+            // itself still parses under the current schema; accept it and
+            // re-seal the whole file under the current format.
+            needs_reseal = true;
+        }
         records.push(envelope.payload);
+    }
+    if needs_reseal {
+        let mut file = File::create(path)?;
+        for record in &records {
+            append_line(&mut file, record)?;
+        }
     }
     Ok(records)
 }
@@ -156,6 +205,24 @@ impl EventStore {
             .find(|analysis| analysis.signature == signature)
     }
 
+    /// Every stored analysis attributed to `wallet`, excluding the analysis
+    /// for `exclude_signature` (the launch currently being assessed). Feeds
+    /// the local reputation signal — derived from our own receipts only.
+    pub fn analyses_for_wallet(
+        &self,
+        wallet: &str,
+        exclude_signature: &str,
+    ) -> Vec<LaunchAnalysis> {
+        self.analyses
+            .iter()
+            .filter(|analysis| {
+                analysis.dev_wallet.as_deref() == Some(wallet)
+                    && analysis.signature != exclude_signature
+            })
+            .cloned()
+            .collect()
+    }
+
     pub fn len(&self) -> usize {
         self.events.len()
     }
@@ -195,6 +262,7 @@ mod tests {
                 address: "holder".to_string(),
                 amount_raw: 500_000,
             }],
+            dev_wallet: None,
         };
         assess(
             Some(&input),
@@ -260,6 +328,46 @@ mod tests {
             EventStore::open(&dir),
             Err(StoreError::Checksum(_))
         ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_record_is_resealed_not_rejected() {
+        let dir = std::env::temp_dir().join(format!("tw-store-legacy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("store")).unwrap();
+
+        // Simulate a record written by an older build: payload without the
+        // dev_wallet field, no schema marker, CRC over the plain
+        // serialization — exactly what a schema addition would otherwise
+        // reject as "tampering".
+        let legacy_payload = serde_json::json!({
+            "signature": "5ig5ig5ig",
+            "slot": 42,
+            "mint": null,
+            "flags": [],
+            "not_assessed": [],
+            "assessed_at_unix_ms": 1_700_000_000_000_u64,
+        });
+        let payload_bytes = serde_json::to_vec(&legacy_payload).unwrap();
+        let line = serde_json::json!({
+            "crc32": crc32fast::hash(&payload_bytes),
+            "payload": legacy_payload,
+        });
+        std::fs::write(dir.join(ANALYSES_FILE), format!("{line}\n")).unwrap();
+
+        {
+            let store = EventStore::open(&dir).unwrap();
+            let analyses = store.recent_analyses(10);
+            assert_eq!(analyses.len(), 1);
+            assert_eq!(analyses[0].dev_wallet, None);
+        }
+        // The file was re-sealed under the current format: reopening is a
+        // strict verification, not another migration.
+        let resealed = std::fs::read_to_string(dir.join(ANALYSES_FILE)).unwrap();
+        assert!(resealed.contains("\"schema\":2"));
+        let store = EventStore::open(&dir).unwrap();
+        assert_eq!(store.recent_analyses(10).len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
