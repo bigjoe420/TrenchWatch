@@ -460,6 +460,42 @@ mod tests {
     }
 
     #[test]
+    fn v2_record_from_before_schema_addition_still_verifies() {
+        let dir = std::env::temp_dir().join(format!("tw-store-v2old-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // A schema-2 record written by a build that predates the graduation
+        // field: payload JSON without that key, CRC over the canonical
+        // sorted-key bytes — exactly what is on disk in the field. Adding a
+        // field to a stored struct must not fail verification (store.rs
+        // format note), because serde-defaulted fields that serialize to
+        // nothing keep the round-trip bytes identical.
+        let old_payload = serde_json::json!({
+            "assessed_at_unix_ms": 1_700_000_000_000_u64,
+            "dev_wallet": null,
+            "flags": [],
+            "mint": null,
+            "not_assessed": [],
+            "signature": "5ig5ig5ig",
+            "slot": 42,
+        });
+        let canonical = serde_json::to_vec(&old_payload).unwrap();
+        let line = serde_json::json!({
+            "crc32": crc32fast::hash(&canonical),
+            "payload": old_payload,
+            "schema": 2,
+        });
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(ANALYSES_FILE), format!("{line}\n")).unwrap();
+
+        let store = EventStore::open(&dir).unwrap();
+        let analyses = store.recent_analyses(10);
+        assert_eq!(analyses.len(), 1);
+        assert!(analyses[0].graduation.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn legacy_record_is_resealed_not_rejected() {
         let dir = std::env::temp_dir().join(format!("tw-store-legacy-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

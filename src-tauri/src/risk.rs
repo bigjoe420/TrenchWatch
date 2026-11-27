@@ -322,7 +322,10 @@ pub struct LaunchAnalysis {
     pub dev_wallet: Option<String>,
     /// Set once this token is seen graduating to a DEX pool. Stays `None`
     /// for launches that have not graduated (yet) while we were watching.
-    #[serde(default)]
+    /// `skip_serializing_if` keeps the canonical bytes of older records
+    /// identical after this schema addition — the store's CRC verification
+    /// (store.rs) depends on that stability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graduation: Option<Graduation>,
 }
 
