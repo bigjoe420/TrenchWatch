@@ -218,6 +218,7 @@ mod tests {
                 address: "holder".to_string(),
                 amount_raw: 500_000,
             }],
+            dev_wallet: Some("auth".to_string()),
         };
         let context = AnalysisContext {
             signature: "sig",

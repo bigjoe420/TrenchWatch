@@ -91,10 +91,22 @@ is the strongest single predictor of a future rug.
 **Why it matters.** Serial launchers optimize for speed; track record is
 the only reputation that exists on-chain.
 
-**Status in v1: not yet assessed.** Requires the same wallet-history
-enrichment as S3. TrenchWatch's own event store accumulates the launch
-history this signal will eventually be checked against — one of the reasons
-the store keeps raw receipts.
+**How we check.** The creation transaction identifies the wallet that paid
+for it (the deployer). TrenchWatch then looks that wallet up in its own
+stored analyses — the receipts this tool has already collected, nothing
+from a third-party score. Prior launches attributed to the same wallet are
+summarized in the receipt, and the signal is graded:
+
+- any prior launch raised **critical** flags → **Warn** (a pattern of
+  flagged launches is riskier than any single launch suggests)
+- prior launches exist, none critical → **Info** (known history, no
+  repeat-offender pattern — noted, not celebrated)
+- the wallet is first-seen → recorded as *not assessed*, with the reason
+  stated plainly, never treated as a clean bill
+
+**Limitations.** History only exists for what this tool observed: a wallet
+that launched elsewhere before you started watching looks "first-seen"
+here. Reputation is local, and the receipt says so.
 
 **False-positive rate.** Not stated until measured. Watch for deployer
 rotation (a pro uses a fresh wallet per launch — S3's mixer/freshness

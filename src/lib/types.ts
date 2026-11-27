@@ -33,6 +33,7 @@ export interface LaunchAnalysis {
   flags: RiskFlag[];
   not_assessed: NotAssessed[];
   assessed_at_unix_ms: number;
+  dev_wallet: string | null;
 }
 
 export interface LaunchEvent {

@@ -39,7 +39,23 @@ pub fn spawn(
                 .duration_since(UNIX_EPOCH)
                 .map(|duration| duration.as_millis() as u64)
                 .unwrap_or(0);
-            let outcome = analyze_launch(provider, &event, now).await;
+            // Wallet reputation comes from our own stored receipts: prior
+            // analyses attributed to the same deployer wallet.
+            let history_store = Arc::clone(&store);
+            let signature = event.signature.clone();
+            let outcome = analyze_launch(provider, &event, now, &move |wallet| {
+                history_store
+                    .lock()
+                    .map(|store| {
+                        store
+                            .analyses_for_wallet(wallet, &signature)
+                            .iter()
+                            .map(crate::risk::PriorLaunch::from)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .await;
 
             if !outcome.provider_ok {
                 // Socket looks broken; drop it so the next event reconnects.

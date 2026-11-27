@@ -80,7 +80,9 @@ async fn main() -> anyhow::Result<()> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        let outcome = analyze_launch(&mut enricher, event, now).await;
+        // One-shot analysis has no local store, so every wallet is
+        // first-seen — the reputation signal records that honestly.
+        let outcome = analyze_launch(&mut enricher, event, now, &|_| vec![]).await;
         if !outcome.provider_ok {
             // Transient fetch failure: the analysis records honest
             // not_assessed reasons, which is still valid proof output.

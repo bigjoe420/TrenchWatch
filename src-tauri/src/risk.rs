@@ -85,12 +85,6 @@ pub fn deferred_signals() -> Vec<NotAssessed> {
                 .to_string(),
         },
         NotAssessed {
-            signal: SignalKind::DevRepeatLauncher,
-            reason: "dev-wallet history requires wallet-history enrichment — \
-                     planned, not yet wired"
-                .to_string(),
-        },
-        NotAssessed {
             signal: SignalKind::ThinLiquidity,
             reason: "pool balances require pool-state parsing — planned, not \
                      yet wired"
@@ -111,6 +105,30 @@ pub struct AnalysisInput {
     pub mint_address: String,
     pub mint: MintAccount,
     pub holders: Vec<HolderSnapshot>,
+    /// The signer that paid for the creation tx (the deployer), when the
+    /// parsed tx identifies one. Drives the local reputation signal (S4).
+    pub dev_wallet: Option<String>,
+}
+
+/// One previous launch attributed to a dev wallet — the local reputation
+/// record. Derived from stored receipts, never from a third-party score.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriorLaunch {
+    pub signature: String,
+    pub slot: u64,
+    pub mint: Option<String>,
+    pub worst_severity: Severity,
+}
+
+impl From<&LaunchAnalysis> for PriorLaunch {
+    fn from(analysis: &LaunchAnalysis) -> Self {
+        PriorLaunch {
+            signature: analysis.signature.clone(),
+            slot: analysis.slot,
+            mint: analysis.mint.clone(),
+            worst_severity: analysis.max_severity().unwrap_or(Severity::Info),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -283,6 +301,10 @@ pub struct LaunchAnalysis {
     pub flags: Vec<RiskFlag>,
     pub not_assessed: Vec<NotAssessed>,
     pub assessed_at_unix_ms: u64,
+    /// The wallet that paid for the creation tx, when identified. Lets the UI
+    /// and future analyses link a dev wallet's launches together.
+    #[serde(default)]
+    pub dev_wallet: Option<String>,
 }
 
 impl LaunchAnalysis {
@@ -334,12 +356,65 @@ impl LaunchAnalysis {
     }
 }
 
-/// Assess everything that can be assessed from `input`. Signals whose data
-/// is missing here are expected to arrive already-present in
-/// `extra_not_assessed` (the deferred-signals list) or are added here.
-pub fn assess(
+/// Local reputation check: what does this tool's own record of the wallet's
+/// previous launches say? Derived from stored receipts only — no third-party
+/// score is consulted.
+fn assess_dev_history(
+    wallet: &str,
+    history: &[PriorLaunch],
+    context: &AnalysisContext<'_>,
+) -> Option<RiskFlag> {
+    let prior_criticals = history
+        .iter()
+        .filter(|prior| prior.worst_severity == Severity::Critical)
+        .count();
+    let (severity, explanation) = if prior_criticals > 0 {
+        (
+            Severity::Warn,
+            format!(
+                "Wallet {wallet} has launched {count} token(s) before in this \
+                 tool's records, and {prior_criticals} of them raised critical \
+                 flags. A pattern of flagged launches is riskier than any single \
+                 launch suggests — treat the deployer's history as part of this \
+                 token's risk.",
+                count = history.len(),
+            ),
+        )
+    } else {
+        (
+            Severity::Info,
+            format!(
+                "Wallet {wallet} has launched {count} token(s) before in this tool's \
+                 records; none were flagged critical. Known history is not proof \
+                 of good intent, but there is no repeat-offender pattern here.",
+                count = history.len(),
+            ),
+        )
+    };
+    Some(RiskFlag {
+        signal: SignalKind::DevRepeatLauncher,
+        severity,
+        explanation,
+        evidence: json!({
+            "wallet": wallet,
+            "prior_launches": history,
+        }),
+        field_guide_ref: SignalKind::DevRepeatLauncher
+            .field_guide_anchor()
+            .to_string(),
+        slot: context.slot,
+        observed_unix_ms: context.observed_unix_ms,
+    })
+}
+
+/// Assess everything that can be assessed from `input` plus the wallet's
+/// local launch history. Signals whose data is missing here are expected to
+/// arrive already-present in `extra_not_assessed` (the deferred-signals
+/// list) or are added here.
+pub fn assess_with_history(
     input: Option<&AnalysisInput>,
     context: &AnalysisContext<'_>,
+    history: &[PriorLaunch],
     extra_not_assessed: Vec<NotAssessed>,
 ) -> LaunchAnalysis {
     let mut flags = Vec::new();
@@ -372,6 +447,27 @@ pub fn assess(
             });
         }
     }
+
+    // S4 is live: the wallet's prior launches come from our own store.
+    not_assessed.retain(|entry| entry.signal != SignalKind::DevRepeatLauncher);
+    match input.and_then(|input| input.dev_wallet.as_deref()) {
+        None => not_assessed.push(NotAssessed {
+            signal: SignalKind::DevRepeatLauncher,
+            reason: "creation tx did not identify a signer wallet — launch \
+                     history cannot be attached"
+                .to_string(),
+        }),
+        Some(_wallet) if history.is_empty() => not_assessed.push(NotAssessed {
+            signal: SignalKind::DevRepeatLauncher,
+            reason: "first-seen wallet — no local launch history for it yet".to_string(),
+        }),
+        Some(wallet) => {
+            if let Some(flag) = assess_dev_history(wallet, history, context) {
+                flags.push(flag);
+            }
+        }
+    }
+
     not_assessed.extend(extra_not_assessed);
 
     LaunchAnalysis {
@@ -381,7 +477,18 @@ pub fn assess(
         flags,
         not_assessed,
         assessed_at_unix_ms: context.observed_unix_ms,
+        dev_wallet: input.and_then(|input| input.dev_wallet.clone()),
     }
+}
+
+/// Convenience wrapper for callers without wallet history (e.g. one-shot
+/// CLI analysis): treats every wallet as first-seen.
+pub fn assess(
+    input: Option<&AnalysisInput>,
+    context: &AnalysisContext<'_>,
+    extra_not_assessed: Vec<NotAssessed>,
+) -> LaunchAnalysis {
+    assess_with_history(input, context, &[], extra_not_assessed)
 }
 
 #[cfg(test)]
@@ -410,6 +517,23 @@ mod tests {
             mint_address: "mint111".to_string(),
             mint,
             holders,
+            dev_wallet: None,
+        }
+    }
+
+    fn input_from_wallet(mint: MintAccount, wallet: &str) -> AnalysisInput {
+        AnalysisInput {
+            dev_wallet: Some(wallet.to_string()),
+            ..input(mint, vec![holder(10)])
+        }
+    }
+
+    fn prior(worst_severity: Severity) -> PriorLaunch {
+        PriorLaunch {
+            signature: "priorsig".to_string(),
+            slot: 99,
+            mint: Some("priormint".to_string()),
+            worst_severity,
         }
     }
 
@@ -548,5 +672,60 @@ mod tests {
             !text.to_lowercase().contains("safe")
                 || text.to_lowercase().contains("not a guarantee")
         );
+    }
+
+    #[test]
+    fn repeat_wallet_with_flagged_history_warns() {
+        let input = input_from_wallet(mint_with(None, None), "RepeatDev111");
+        let history = vec![prior(Severity::Critical), prior(Severity::Info)];
+        let analysis = assess_with_history(Some(&input), &context(), &history, vec![]);
+        let flag = analysis
+            .flags
+            .iter()
+            .find(|flag| flag.signal == SignalKind::DevRepeatLauncher)
+            .expect("dev history flag");
+        assert_eq!(flag.severity, Severity::Warn);
+        assert!(flag.explanation.contains("RepeatDev111"));
+        assert_eq!(flag.evidence["wallet"], serde_json::json!("RepeatDev111"));
+        assert_eq!(
+            flag.evidence["prior_launches"].as_array().map(Vec::len),
+            Some(2)
+        );
+        // an assessed signal must not also sit in the not-assessed list
+        assert!(analysis
+            .not_assessed
+            .iter()
+            .all(|entry| entry.signal != SignalKind::DevRepeatLauncher));
+        assert_eq!(analysis.dev_wallet.as_deref(), Some("RepeatDev111"));
+    }
+
+    #[test]
+    fn clean_history_is_info_not_silence() {
+        let input = input_from_wallet(mint_with(None, None), "KnownDev111");
+        let history = vec![prior(Severity::Warn), prior(Severity::Info)];
+        let analysis = assess_with_history(Some(&input), &context(), &history, vec![]);
+        let flag = analysis
+            .flags
+            .iter()
+            .find(|flag| flag.signal == SignalKind::DevRepeatLauncher)
+            .expect("dev history flag");
+        assert_eq!(flag.severity, Severity::Info);
+        assert!(flag.explanation.contains("not proof of good intent"));
+    }
+
+    #[test]
+    fn first_seen_wallet_reports_not_assessed() {
+        let input = input_from_wallet(mint_with(None, None), "NewDev111");
+        let analysis = assess_with_history(Some(&input), &context(), &[], vec![]);
+        assert!(analysis
+            .flags
+            .iter()
+            .all(|flag| flag.signal != SignalKind::DevRepeatLauncher));
+        let entry = analysis
+            .not_assessed
+            .iter()
+            .find(|entry| entry.signal == SignalKind::DevRepeatLauncher)
+            .expect("first-seen not-assessed entry");
+        assert!(entry.reason.contains("first-seen"));
     }
 }

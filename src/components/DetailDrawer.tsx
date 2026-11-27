@@ -37,6 +37,8 @@ export default function DetailDrawer({
             <dd className="mono">{analysis.slot.toLocaleString()}</dd>
             <dt>token mint</dt>
             <dd className="mono wrap">{analysis.mint ?? "not identified from the creation transaction"}</dd>
+            <dt>dev wallet</dt>
+            <dd className="mono wrap">{analysis.dev_wallet ?? "not identified from the creation transaction"}</dd>
             <dt>assessed</dt>
             <dd>{absoluteTime(analysis.assessed_at_unix_ms)}</dd>
           </dl>

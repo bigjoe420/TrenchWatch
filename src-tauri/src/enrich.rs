@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::listener::LaunchEvent;
 use crate::provider::{ChainProvider, WsProvider};
-use crate::risk::{self, AnalysisInput, HolderSnapshot, LaunchAnalysis, NotAssessed};
+use crate::risk::{self, AnalysisInput, HolderSnapshot, LaunchAnalysis, NotAssessed, PriorLaunch};
 
 /// One analysis pass plus whether the provider still looks healthy
 /// (persistent transport errors mean the next pass should reconnect first).
@@ -44,10 +44,32 @@ fn extract_new_mint(transaction: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Identify the wallet that paid for the creation tx (the deployer): the
+/// account key the parsed tx marks as a signer. jsonParsed txs list keys as
+/// objects (`{pubkey, signer: true}`); the plain-string fallback covers
+/// other encodings, where the fee payer — always a signer — is first.
+fn extract_signer(transaction: &Value) -> Option<String> {
+    let keys = transaction
+        .get("transaction")?
+        .get("message")?
+        .get("accountKeys")?
+        .as_array()?;
+    for key in keys {
+        if key.get("signer").and_then(Value::as_bool).unwrap_or(false) {
+            return key
+                .get("pubkey")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+        }
+    }
+    keys.first().and_then(Value::as_str).map(str::to_string)
+}
+
 pub async fn analyze_launch(
     provider: &mut WsProvider,
     event: &LaunchEvent,
     now_unix_ms: u64,
+    wallet_history: &(dyn Fn(&str) -> Vec<PriorLaunch> + Sync),
 ) -> EnrichmentOutcome {
     let context = risk::AnalysisContext {
         signature: &event.signature,
@@ -77,6 +99,8 @@ pub async fn analyze_launch(
             provider_ok: true,
         };
     };
+
+    let signer = extract_signer(&tx);
 
     let Some(mint_address) = extract_new_mint(&tx) else {
         return EnrichmentOutcome {
@@ -114,13 +138,18 @@ pub async fn analyze_launch(
         })
         .collect::<Vec<_>>();
 
+    // Local reputation: everything this wallet launched before, per our own
+    // stored receipts — no third-party score involved.
+    let history = signer.as_deref().map(wallet_history).unwrap_or_default();
+
     let input = AnalysisInput {
         mint_address,
         mint,
         holders,
+        dev_wallet: signer,
     };
     EnrichmentOutcome {
-        analysis: risk::assess(Some(&input), &context, vec![]),
+        analysis: risk::assess_with_history(Some(&input), &context, &history, vec![]),
         provider_ok: true,
     }
 }
@@ -170,5 +199,39 @@ mod tests {
             }
         });
         assert!(extract_new_mint(&tx).is_none());
+    }
+
+    #[test]
+    fn signer_is_the_flagged_key_in_parsed_form() {
+        let tx = json!({
+            "transaction": {
+                "message": {
+                    "accountKeys": [
+                        { "pubkey": "DeployerWallet111", "signer": true, "writable": true },
+                        { "pubkey": "LaunchpadProgram111", "signer": false, "writable": true },
+                        { "pubkey": "MintAccount111", "signer": false, "writable": false }
+                    ]
+                }
+            }
+        });
+        assert_eq!(extract_signer(&tx).as_deref(), Some("DeployerWallet111"));
+    }
+
+    #[test]
+    fn signer_falls_back_to_first_key_in_string_form() {
+        let tx = json!({
+            "transaction": {
+                "message": {
+                    "accountKeys": ["DeployerWallet111", "Other111"]
+                }
+            }
+        });
+        assert_eq!(extract_signer(&tx).as_deref(), Some("DeployerWallet111"));
+    }
+
+    #[test]
+    fn no_signer_without_transaction_body() {
+        let tx = json!({ "meta": {} });
+        assert!(extract_signer(&tx).is_none());
     }
 }
