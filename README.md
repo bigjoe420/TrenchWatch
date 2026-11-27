@@ -1,5 +1,10 @@
 # TrenchWatch
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
+  <img src="assets/logo-light.png" alt="TrenchWatch — Solana launch monitor" width="560">
+</picture>
+
 Real-time monitor for brand-new token launches on Solana mainnet-beta, with
 explainable rug-pull risk scoring. Every flag ships with plain-language
 evidence and an on-chain receipt you can verify yourself — no black-box
