@@ -112,6 +112,40 @@ those reads (never on the launch stream).
 3. If Helius errors or the cap is hit, reads fall back to the public
    endpoint automatically — analysis never stalls.
 
+### Optional: Discord alerts
+
+Get flagged-launch receipts posted to a Discord channel you control.
+Skip this section and desktop notifications still cover you — Discord is
+just for alerts that follow you onto your phone.
+
+**Setting it up (about 2 minutes):**
+
+1. Open Discord and pick a server where you can manage webhooks — any
+   server you own works. Don't have one? Click the `+` in the server
+   list and create a free private server just for alerts.
+2. Right-click the server name → **Server Settings** → **Integrations** →
+   **Webhooks** → **New Webhook**.
+3. Pick the channel the alerts should land in (for example `#alerts`),
+   give the webhook any name — the app overrides it with `TrenchWatch` —
+   then click **Copy Webhook URL**. It looks like
+   `https://discord.com/api/webhooks/<id>/<token>`.
+4. Paste that URL into the **discord webhook** field in the app's
+   Settings drawer (or set `alerts.discord_webhook_url` in `config.toml`
+   next to the app data directory), then restart the app.
+5. Choose how chatty it should be: the **alert threshold** in Settings
+   defaults to critical-only. Set it to `warn` or `every flag` for
+   more traffic.
+
+**What you'll receive:** one message per flagged launch, styled as an
+embed with the severity color, the token's mint address, the on-chain
+signature, and the top risk flag in plain words — enough to decide
+whether to open the app for the full evidence trail.
+
+**What leaves your machine:** nothing but those POSTs to the exact URL
+you pasted. No analytics, no telemetry. If Discord rejects or can't be
+reached, the alert is skipped and the reason is logged — monitoring
+never stalls on a chat outage.
+
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module map and data flow.
