@@ -52,6 +52,12 @@ export interface StatusResponse {
   endpoint: string;
 }
 
+export interface AlertConfig {
+  desktop_notifications: boolean;
+  min_severity: Severity;
+  discord_webhook_url: string;
+}
+
 export const SIGNAL_LABELS: Record<SignalKind, string> = {
   mint_freeze_authority: "Mint & freeze authority",
   lp_burn_or_lock: "LP burn / lock",

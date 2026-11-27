@@ -656,6 +656,128 @@ code {
   line-height: 1.55;
 }
 
+/* --- settings ------------------------------------------------------------- */
+.drawer-narrow {
+  width: min(440px, 92vw);
+}
+
+.icon-button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 7px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.icon-button:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: 0 0 10px rgba(255, 161, 0, 0.15);
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.settings-row.settings-toggle {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.settings-row input[type="checkbox"] {
+  accent-color: var(--sol-green);
+  margin-top: 3px;
+  width: 15px;
+  height: 15px;
+}
+
+.settings-row strong {
+  display: block;
+  font-size: 12.5px;
+  margin-bottom: 3px;
+}
+
+.settings-row em {
+  display: block;
+  font-style: normal;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.settings-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.settings-row select,
+.settings-input {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 12px;
+  width: 100%;
+}
+
+.settings-row select:focus,
+.settings-input:focus {
+  outline: none;
+  border-color: var(--sol-purple);
+  box-shadow: 0 0 0 2px rgba(153, 69, 255, 0.25);
+}
+
+.settings-hint {
+  color: var(--text-faint);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.settings-save {
+  background: var(--sol-gradient);
+  border: none;
+  color: #060607;
+  font-weight: 700;
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.settings-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-saved {
+  color: var(--sol-green);
+  font-size: 11.5px;
+}
+
+.settings-error {
+  color: var(--critical);
+  font-size: 11.5px;
+}
+
 /* scrollbars */
 ::-webkit-scrollbar {
   width: 9px;

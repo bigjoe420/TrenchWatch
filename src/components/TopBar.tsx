@@ -11,7 +11,13 @@ function stateOf(status: StatusResponse | null): "live" | "connecting" | "degrad
   return "connecting";
 }
 
-export default function TopBar({ status }: { status: StatusResponse | null }) {
+export default function TopBar({
+  status,
+  onOpenSettings,
+}: {
+  status: StatusResponse | null;
+  onOpenSettings: () => void;
+}) {
   const state = stateOf(status);
   return (
     <header className="topbar">
@@ -45,6 +51,9 @@ export default function TopBar({ status }: { status: StatusResponse | null }) {
           <span className="status-dot" />
           {status ? status.listener : "connecting…"}
         </span>
+        <button className="icon-button" onClick={onOpenSettings} aria-label="Alert settings" title="Alert settings">
+          ⚙
+        </button>
       </div>
     </header>
   );

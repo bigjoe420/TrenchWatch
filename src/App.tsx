@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import DetailDrawer from "./components/DetailDrawer";
 import LaunchTable, { type TableFilters } from "./components/LaunchTable";
+import SettingsDrawer from "./components/SettingsDrawer";
 import TopBar from "./components/TopBar";
-import { getAnalysis, getRecentAnalyses, getRecentEvents, getStatus } from "./lib/ipc";
-import type { LaunchAnalysis, LaunchEvent, StatusResponse } from "./lib/types";
+import { getAlertsConfig, getAnalysis, getRecentAnalyses, getRecentEvents, getStatus } from "./lib/ipc";
+import type { AlertConfig, LaunchAnalysis, LaunchEvent, StatusResponse } from "./lib/types";
 
 const REFRESH_MS = 2500;
 
@@ -20,6 +21,8 @@ export default function App() {
   });
   const [selected, setSelected] = useState<LaunchAnalysis | null>(null);
   const selectedSignature = useRef<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<AlertConfig | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -69,9 +72,16 @@ export default function App() {
 
   const programOptions = ["all", ...new Set(events.map((event) => event.program_label))];
 
+  const openSettings = useCallback(() => {
+    setSettingsOpen(true);
+    getAlertsConfig()
+      .then(setAlertConfig)
+      .catch(() => setAlertConfig(null));
+  }, []);
+
   return (
     <div className="app-shell">
-      <TopBar status={status} />
+      <TopBar status={status} onOpenSettings={openSettings} />
 
       <div className="filter-bar">
         <label className="filter">
@@ -153,6 +163,20 @@ export default function App() {
       </main>
 
       {selected && <DetailDrawer analysis={selected} onClose={closeDetails} />}
+      {settingsOpen && (
+        alertConfig ? (
+          <SettingsDrawer
+            initial={alertConfig}
+            onClose={() => setSettingsOpen(false)}
+          />
+        ) : (
+          <div className="drawer-backdrop" onClick={() => setSettingsOpen(false)}>
+            <aside className="drawer drawer-narrow">
+              <p className="dim">loading settings…</p>
+            </aside>
+          </div>
+        )
+      )}
     </div>
   );
 }

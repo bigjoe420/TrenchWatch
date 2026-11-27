@@ -4,6 +4,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::config::AlertConfig;
 use crate::listener::LaunchEvent;
 use crate::pipeline;
 use crate::risk::LaunchAnalysis;
@@ -67,4 +68,26 @@ pub async fn get_analysis(
 ) -> Result<Option<LaunchAnalysis>, String> {
     let store = state.store.lock().map_err(|_| "store lock poisoned")?;
     Ok(store.analysis_for(&signature).cloned())
+}
+
+#[tauri::command]
+pub async fn get_alerts_config(state: State<'_, AppState>) -> Result<AlertConfig, String> {
+    let config = state.config.lock().map_err(|_| "config lock poisoned")?;
+    Ok(config.alerts.clone())
+}
+
+/// Update alert settings: validate, persist to the file-backed config, and
+/// take effect immediately (the alert stage reads the shared config live).
+#[tauri::command]
+pub async fn update_alerts_config(
+    state: State<'_, AppState>,
+    alerts: AlertConfig,
+) -> Result<(), String> {
+    alerts.validate()?;
+    let mut config = state.config.lock().map_err(|_| "config lock poisoned")?;
+    config.alerts = alerts;
+    config
+        .save(&state.app_data_dir)
+        .map_err(|e| format!("could not write config.toml: {e}"))?;
+    Ok(())
 }

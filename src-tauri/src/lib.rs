@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod analysis;
 pub mod commands;
 pub mod config;
@@ -8,6 +9,7 @@ pub mod provider;
 pub mod risk;
 pub mod store;
 
+use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -21,6 +23,8 @@ pub struct AppState {
     pub dropped: Arc<AtomicU64>,
     pub started: Instant,
     pub endpoint: String,
+    pub config: Mutex<config::Config>,
+    pub app_data_dir: PathBuf,
 }
 
 pub fn run() -> anyhow::Result<()> {
@@ -50,8 +54,11 @@ pub fn run() -> anyhow::Result<()> {
             let (status_tx, status_rx) = watch::channel(listener::ListenerStatus::Connecting);
             let dropped = Arc::new(AtomicU64::new(0));
 
+            let alerts_config = alerts::SharedAlertConfig::new(Mutex::new(config.alerts.clone()));
+            let alerts = Arc::new(alerts::Alerts::new(alerts_config, app.handle().clone()));
+
             let (analysis_tx, analysis_task) =
-                analysis::spawn(store.clone(), config.rpc.ws_url.clone());
+                analysis::spawn(store.clone(), config.rpc.ws_url.clone(), alerts);
             tauri::async_runtime::spawn(analysis_task);
 
             let (handle, sink_task) =
@@ -67,6 +74,8 @@ pub fn run() -> anyhow::Result<()> {
                 dropped,
                 started: Instant::now(),
                 endpoint: config.rpc.ws_url.clone(),
+                config: Mutex::new(config),
+                app_data_dir: app_data.clone(),
             });
             tracing::info!("trenchwatch backend up");
             Ok(())
@@ -75,7 +84,9 @@ pub fn run() -> anyhow::Result<()> {
             commands::get_status,
             commands::get_recent_events,
             commands::get_recent_analyses,
-            commands::get_analysis
+            commands::get_analysis,
+            commands::get_alerts_config,
+            commands::update_alerts_config
         ])
         .run(tauri::generate_context!())
         .map_err(|e| anyhow::anyhow!("tauri runtime error: {e}"))

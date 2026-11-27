@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 
+use crate::alerts::Alerts;
 use crate::enrich::analyze_launch;
 use crate::listener::LaunchEvent;
 use crate::provider::WsProvider;
@@ -19,6 +20,7 @@ use crate::store::{EventStore, StoreError};
 pub fn spawn(
     store: Arc<Mutex<EventStore>>,
     ws_url: String,
+    alerts: Arc<Alerts>,
 ) -> (mpsc::Sender<LaunchEvent>, impl Future<Output = ()>) {
     let (tx, mut rx) = mpsc::channel::<LaunchEvent>(256);
 
@@ -51,6 +53,8 @@ pub fn spawn(
             if let Err(error) = result {
                 tracing::warn!(%error, signature = %event.signature, "analysis persist failed");
             }
+
+            alerts.notify(&outcome.analysis).await;
         }
         tracing::info!("analysis stage drained");
     };

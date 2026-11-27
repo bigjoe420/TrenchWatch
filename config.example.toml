@@ -16,14 +16,15 @@ api_key = ""
 daily_credit_cap = 100000
 
 [monitor]
-# Emit a desktop notification for every new launch that passes filters.
-desktop_notifications = true
-
 # Minimum pool liquidity (in USD) before a launch is surfaced in the UI
 # and eligible for alerts. 0 = surface everything.
 min_liquidity_usd = 0
 
 [alerts]
+# Desktop notifications for flagged launches at or above min_severity.
+desktop_notifications = true
+# Lowest severity that triggers an alert: "critical" (default), "warn", or "info".
+min_severity = "critical"
 # Optional Discord webhook for receipts-style launch alerts.
 # Leave empty to disable. The app only POSTs to this exact URL.
 discord_webhook_url = ""
