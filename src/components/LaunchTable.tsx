@@ -67,11 +67,15 @@ export default function LaunchTable({
       return true;
     });
 
-  // Newest first within a severity band, so critical launches rise to the top.
+  // Newest first within a severity band, so critical launches rise to the
+  // top. A graduation that had risk flags at birth gets bumped up a band —
+  // "graduated with baggage" is the row people most want to see in the
+  // "new on DEXs" view.
   const rank = (row: Row) => {
     const severity = maxSeverity(row.analysis);
     const sev = severity === null ? 3 : SEVERITY_ORDER[severity];
-    return sev * 1e15 + row.analysis.slot;
+    const baggage = row.analysis.graduation && row.analysis.flags.length > 0 ? 1 : 0;
+    return Math.max(0, sev - baggage) * 1e15 + row.analysis.slot;
   };
   rows.sort((a, b) => rank(b) - rank(a));
 

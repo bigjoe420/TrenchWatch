@@ -163,10 +163,10 @@ impl Alerts {
         let venue = &graduation.venue_label;
         let title = format!("Graduated to {venue} — {mint}");
         let body = format!(
-            "This token's bonding-curve phase ended and its liquidity moved to a \
-             {venue} pool at slot {slot}. Open TrenchWatch for the full receipt.",
-            venue = graduation.venue_label,
+            "Bonding-curve phase ended; liquidity moved to a {venue} pool at slot {slot}. \
+             At birth: {verdict}.",
             slot = graduation.slot,
+            verdict = birth_verdict_text(analysis),
         );
         let result = self
             .app
@@ -279,9 +279,12 @@ fn discord_payload(analysis: &LaunchAnalysis) -> serde_json::Value {
 }
 
 /// Graduation embed: a lifecycle announcement, not a risk verdict — the
-/// receipt is the migration transaction that created the DEX pool.
+/// receipt is the migration transaction that created the DEX pool. The
+/// launch-time verdict rides along because we watched this token from
+/// birth: graduation with baggage reads differently than a clean one.
 fn graduation_payload(analysis: &LaunchAnalysis, graduation: &Graduation) -> serde_json::Value {
     let mint = analysis.mint.as_deref().unwrap_or("not identified");
+    let birth_verdict = birth_verdict_text(analysis);
     json!({
         "username": "TrenchWatch",
         "avatar_url": DISCORD_AVATAR_URL,
@@ -296,6 +299,7 @@ fn graduation_payload(analysis: &LaunchAnalysis, graduation: &Graduation) -> ser
             "color": 0x22d3ee,
             "fields": [
                 {"name": "token mint", "value": escape_discord(mint), "inline": true},
+                {"name": "at birth", "value": escape_discord(&birth_verdict), "inline": true},
                 {"name": "launched at slot", "value": analysis.slot.to_string(), "inline": true},
                 {"name": "launched", "value": escape_discord(&analysis.signature)},
                 {"name": "migration transaction", "value": escape_discord(&graduation.signature)},
@@ -303,6 +307,41 @@ fn graduation_payload(analysis: &LaunchAnalysis, graduation: &Graduation) -> ser
             "footer": {"text": "Graduation detected on-chain: the pool-creation transaction IS the migration — same mint, same receipt."}
         }]
     })
+}
+
+/// One-line verdict recap from the launch analysis: counts by severity, or
+/// an explicit "no flags found" — never the word "safe".
+fn birth_verdict_text(analysis: &LaunchAnalysis) -> String {
+    if analysis.flags.is_empty() {
+        let pending = analysis.not_assessed.len();
+        return format!("no flags found at launch ({pending} signal(s) unassessed)");
+    }
+    let criticals = analysis
+        .flags
+        .iter()
+        .filter(|flag| flag.severity == Severity::Critical)
+        .count();
+    let warnings = analysis
+        .flags
+        .iter()
+        .filter(|flag| flag.severity == Severity::Warn)
+        .count();
+    let infos = analysis
+        .flags
+        .iter()
+        .filter(|flag| flag.severity == Severity::Info)
+        .count();
+    let mut parts = Vec::new();
+    if criticals > 0 {
+        parts.push(format!("{criticals} critical"));
+    }
+    if warnings > 0 {
+        parts.push(format!("{warnings} warning"));
+    }
+    if infos > 0 {
+        parts.push(format!("{infos} note"));
+    }
+    format!("flagged at birth: {}", parts.join(", "))
 }
 
 #[cfg(test)]
@@ -394,5 +433,21 @@ mod tests {
         assert!(text.contains("migration-sig"));
         assert!(text.contains("launch-sig"));
         assert!(text.contains("Graduated to PumpSwap"));
+        assert!(text.contains("flagged at birth"), "embed must carry the launch verdict");
+    }
+
+    #[test]
+    fn birth_verdict_never_says_safe() {
+        let no_flags = crate::risk::assess(
+            None,
+            &AnalysisContext {
+                signature: "sig",
+                slot: 1,
+                observed_unix_ms: 1,
+            },
+            vec![],
+        );
+        assert!(birth_verdict_text(&no_flags).contains("no flags found at launch"));
+        assert!(!birth_verdict_text(&no_flags).contains("safe"));
     }
 }

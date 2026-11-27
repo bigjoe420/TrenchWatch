@@ -57,6 +57,12 @@ export default function DetailDrawer({
             <dl className="kv">
               <dt>graduated at slot</dt>
               <dd className="mono">{analysis.graduation.slot.toLocaleString()}</dd>
+              <dt>launch verdict</dt>
+              <dd>
+                {analysis.flags.length === 0
+                  ? `no flags found at launch (${analysis.not_assessed.length} signal(s) unassessed)`
+                  : `${analysis.flags.filter((f) => f.severity === "critical").length} critical, ${analysis.flags.filter((f) => f.severity === "warn").length} warning, ${analysis.flags.filter((f) => f.severity === "info").length} note at birth`}
+              </dd>
               <dt>migration transaction</dt>
               <dd className="mono wrap">{analysis.graduation.signature}</dd>
               <dt>observed</dt>
