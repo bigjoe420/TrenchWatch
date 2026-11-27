@@ -418,6 +418,22 @@ code {
   background: rgba(20, 241, 149, 0.06);
 }
 
+/* Graduation badge: a lifecycle milestone, deliberately distinct from the
+   risk-verdict chips so it never reads as a severity. */
+.chip-grad {
+  margin-left: 8px;
+  color: #c084fc;
+  border-color: rgba(192, 132, 252, 0.4);
+  background: rgba(192, 132, 252, 0.09);
+}
+
+.graduation-note {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
 .signal-counts {
   display: inline-flex;
   gap: 8px;

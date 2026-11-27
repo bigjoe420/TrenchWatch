@@ -70,6 +70,23 @@ export default function SettingsDrawer({
             </select>
           </label>
 
+          <label className="settings-row settings-toggle">
+            <input
+              type="checkbox"
+              checked={config.graduation_alerts}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, graduation_alerts: e.target.checked }))
+              }
+            />
+            <span>
+              <strong>Graduation alerts</strong>
+              <em>
+                Announce when a tracked token graduates to a real DEX pool (e.g. Pump.fun →
+                PumpSwap) — even if no risk flag fired. Lifecycle news, not a verdict.
+              </em>
+            </span>
+          </label>
+
           <label className="settings-row">
             <span className="settings-label">discord webhook</span>
             <input

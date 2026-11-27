@@ -291,6 +291,21 @@ fn assess_concentration(input: &AnalysisInput, context: &AnalysisContext<'_>) ->
     })
 }
 
+/// A token's move from its launchpad to a real DEX pool, as observed
+/// on-chain. For a Pump.fun token this is the "graduation": the migration
+/// transaction that burns the bonding curve and creates the PumpSwap pool —
+/// which is why we can detect it with certainty (the PumpSwap pool creation
+/// *is* the migration, same transaction, same mint).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Graduation {
+    /// Signature of the migration/pool-creation transaction — the receipt.
+    pub signature: String,
+    pub slot: u64,
+    /// Human label of the DEX the token graduated to (e.g. "PumpSwap").
+    pub venue_label: String,
+    pub detected_unix_ms: u64,
+}
+
 /// The engine's output for one launch: every flag we could assess, every
 /// signal we could not (with reasons), and nothing else.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -305,6 +320,10 @@ pub struct LaunchAnalysis {
     /// and future analyses link a dev wallet's launches together.
     #[serde(default)]
     pub dev_wallet: Option<String>,
+    /// Set once this token is seen graduating to a DEX pool. Stays `None`
+    /// for launches that have not graduated (yet) while we were watching.
+    #[serde(default)]
+    pub graduation: Option<Graduation>,
 }
 
 impl LaunchAnalysis {
@@ -478,6 +497,7 @@ pub fn assess_with_history(
         not_assessed,
         assessed_at_unix_ms: context.observed_unix_ms,
         dev_wallet: input.and_then(|input| input.dev_wallet.clone()),
+        graduation: None,
     }
 }
 

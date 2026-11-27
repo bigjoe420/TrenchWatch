@@ -17,7 +17,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::listener::LaunchEvent;
-use crate::risk::LaunchAnalysis;
+use crate::risk::{Graduation, LaunchAnalysis};
 
 const EVENTS_FILE: &str = "events.jsonl";
 const ANALYSES_FILE: &str = "analyses.jsonl";
@@ -151,7 +151,20 @@ impl EventStore {
         let analyses_path = dir.join(ANALYSES_FILE);
 
         let events = load_verified(&events_path)?;
-        let analyses = load_verified(&analyses_path)?;
+        // Analyses are append-only: a re-assessment (or a later lifecycle
+        // update like graduation) arrives as a new line for an existing
+        // signature. On load, the LATEST record per signature wins —
+        // serving the first (stale) copy would silently undo updates.
+        let mut analyses: Vec<LaunchAnalysis> = Vec::new();
+        for analysis in load_verified::<LaunchAnalysis>(&analyses_path)? {
+            match analyses
+                .iter()
+                .position(|existing| existing.signature == analysis.signature)
+            {
+                Some(position) => analyses[position] = analysis,
+                None => analyses.push(analysis),
+            }
+        }
 
         let events_file = OpenOptions::new()
             .create(true)
@@ -221,6 +234,32 @@ impl EventStore {
             })
             .cloned()
             .collect()
+    }
+
+    /// Signature of the earliest stored launch on `program` whose analysis
+    /// identified `mint` — the handle used to link a token's life stages.
+    /// Graduation linking calls this with the Pump.fun program id.
+    pub fn launch_signature_by_mint(&self, mint: &str, program: &str) -> Option<String> {
+        self.events
+            .iter()
+            .filter(|event| event.program == program)
+            .filter_map(|event| self.analysis_for(&event.signature))
+            .find(|analysis| analysis.mint.as_deref() == Some(mint))
+            .map(|analysis| analysis.signature.clone())
+    }
+
+    /// Attach a graduation to the launch `launch_signature` and persist the
+    /// updated analysis (same replace-by-signature append as a re-assessment).
+    /// Returns the updated analysis when the launch is known.
+    pub fn mark_graduated(
+        &mut self,
+        launch_signature: &str,
+        graduation: Graduation,
+    ) -> Option<LaunchAnalysis> {
+        let mut updated = self.analysis_for(launch_signature)?.clone();
+        updated.graduation = Some(graduation);
+        self.append_analysis(&updated).ok()?;
+        Some(updated)
     }
 
     pub fn len(&self) -> usize {
@@ -328,6 +367,95 @@ mod tests {
             EventStore::open(&dir),
             Err(StoreError::Checksum(_))
         ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pumpswap_pool_links_to_earlier_pumpfun_launch() {
+        let dir = std::env::temp_dir().join(format!("tw-store-grad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let pumpfun_event = LaunchEvent {
+            signature: "pumpfun-sig".to_string(),
+            program: crate::listener::PUMPFUN_PROGRAM.to_string(),
+            program_label: "Pump.fun".to_string(),
+            ..sample_event()
+        };
+        let pumpswap_event = LaunchEvent {
+            signature: "migration-sig".to_string(),
+            slot: 100,
+            program: crate::listener::PUMPSWAP_PROGRAM.to_string(),
+            program_label: "PumpSwap".to_string(),
+            ..sample_event()
+        };
+
+        {
+            let mut store = EventStore::open(&dir).unwrap();
+            store.append(&pumpfun_event).unwrap();
+            store.append(&pumpswap_event).unwrap();
+
+            // Both launches analyze to the same mint (the token).
+            let mut launch_analysis = sample_analysis();
+            launch_analysis.signature = "pumpfun-sig".to_string();
+            store.append_analysis(&launch_analysis).unwrap();
+            let mut pool_analysis = sample_analysis();
+            pool_analysis.signature = "migration-sig".to_string();
+            store.append_analysis(&pool_analysis).unwrap();
+
+            // The PumpSwap pool creation IS the graduation of the pump.fun
+            // launch: link them by mint and persist the updated analysis.
+            let launch_signature = store
+                .launch_signature_by_mint("mint111", crate::listener::PUMPFUN_PROGRAM)
+                .expect("pump.fun launch should be found by mint");
+            assert_eq!(launch_signature, "pumpfun-sig");
+
+            let updated = store
+                .mark_graduated(
+                    &launch_signature,
+                    crate::risk::Graduation {
+                        signature: "migration-sig".to_string(),
+                        slot: 100,
+                        venue_label: "PumpSwap".to_string(),
+                        detected_unix_ms: 1_700_000_001_000,
+                    },
+                )
+                .expect("graduation should attach");
+            assert_eq!(updated.graduation.as_ref().map(|g| g.slot), Some(100));
+        }
+        {
+            // The graduation must survive a reload (old-version lines in the
+            // analyses file are tolerated by design).
+            let store = EventStore::open(&dir).unwrap();
+            let analysis = store.analysis_for("pumpfun-sig").unwrap();
+            let graduation = analysis.graduation.as_ref().expect("graduation persists");
+            assert_eq!(graduation.signature, "migration-sig");
+            assert_eq!(graduation.venue_label, "PumpSwap");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_link_when_mint_unknown_or_launch_unseen() {
+        let dir = std::env::temp_dir().join(format!("tw-store-nolink-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut store = EventStore::open(&dir).unwrap();
+        // No events at all → nothing to link.
+        assert!(store
+            .launch_signature_by_mint("mint111", crate::listener::PUMPFUN_PROGRAM)
+            .is_none());
+        // Unknown launch → mark_graduated returns None, store stays intact.
+        assert!(store
+            .mark_graduated(
+                "missing-sig",
+                crate::risk::Graduation {
+                    signature: "migration-sig".to_string(),
+                    slot: 1,
+                    venue_label: "PumpSwap".to_string(),
+                    detected_unix_ms: 1,
+                },
+            )
+            .is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

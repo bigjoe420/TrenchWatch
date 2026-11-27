@@ -17,6 +17,7 @@ export default function App() {
   const [filters, setFilters] = useState<TableFilters>({
     program: "all",
     severity: "all",
+    stage: "all",
     hideFlagged: false,
   });
   const [selected, setSelected] = useState<LaunchAnalysis | null>(null);
@@ -111,6 +112,18 @@ export default function App() {
             <option value="warn">warning</option>
             <option value="info">note</option>
             <option value="none">no flags found</option>
+          </select>
+        </label>
+
+        <label className="filter">
+          <span>lifecycle</span>
+          <select
+            value={filters.stage}
+            onChange={(e) => setFilters((f) => ({ ...f, stage: e.target.value as TableFilters["stage"] }))}
+          >
+            <option value="all">every stage</option>
+            <option value="launches">launches only</option>
+            <option value="graduated">graduated — new on DEXs</option>
           </select>
         </label>
 

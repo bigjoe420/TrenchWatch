@@ -15,7 +15,7 @@ use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
 use crate::config::AlertConfig;
-use crate::risk::{LaunchAnalysis, Severity};
+use crate::risk::{Graduation, LaunchAnalysis, Severity};
 
 /// In-memory alert configuration; the settings panel updates this live and
 /// persists to `config.toml` at the same time.
@@ -120,6 +120,79 @@ impl Alerts {
             }
         }
     }
+
+    /// A launch graduated from its launchpad to a real DEX pool. Fires when
+    /// enabled in settings, independent of the risk threshold — a graduation
+    /// is a lifecycle event, not a verdict.
+    pub async fn notify_graduation(&self, analysis: &LaunchAnalysis) {
+        let config = match self.config.lock() {
+            Ok(config) => config.clone(),
+            Err(_) => return,
+        };
+        if !config.graduation_alerts {
+            return;
+        }
+        let Some(graduation) = &analysis.graduation else {
+            return;
+        };
+        if !self.mark_fired(&format!("grad:{}", graduation.signature)) {
+            return; // one alert per migration transaction
+        }
+        tracing::info!(signature = %graduation.signature, "graduation alert fired");
+
+        if config.desktop_notifications {
+            self.desktop_graduation(analysis, graduation);
+        }
+        if !config.discord_webhook_url.is_empty() {
+            self.discord_graduation(analysis, graduation, &config.discord_webhook_url)
+                .await;
+        }
+    }
+
+    fn desktop_graduation(&self, analysis: &LaunchAnalysis, graduation: &Graduation) {
+        let mint = analysis
+            .mint
+            .as_deref()
+            .map(short)
+            .unwrap_or_else(|| "unknown mint".to_string());
+        let venue = &graduation.venue_label;
+        let title = format!("Graduated to {venue} — {mint}");
+        let body = format!(
+            "This token's bonding-curve phase ended and its liquidity moved to a \
+             {venue} pool at slot {slot}. Open TrenchWatch for the full receipt.",
+            venue = graduation.venue_label,
+            slot = graduation.slot,
+        );
+        let result = self
+            .app
+            .notification()
+            .builder()
+            .title(&title)
+            .body(&body)
+            .show();
+        if let Err(error) = result {
+            tracing::warn!(%error, "desktop graduation notification failed");
+        }
+    }
+
+    async fn discord_graduation(
+        &self,
+        analysis: &LaunchAnalysis,
+        graduation: &Graduation,
+        webhook: &str,
+    ) {
+        let payload = graduation_payload(analysis, graduation);
+        let result = self.http.post(webhook).json(&payload).send().await;
+        match result {
+            Ok(response) if response.status().is_success() => {}
+            Ok(response) => {
+                tracing::warn!(status = %response.status(), "discord webhook rejected graduation alert");
+            }
+            Err(error) => {
+                tracing::warn!(%error, "discord webhook unreachable for graduation alert");
+            }
+        }
+    }
 }
 
 /// Pure gate: alerts fire only when the worst flag severity reaches the
@@ -199,6 +272,32 @@ fn discord_payload(analysis: &LaunchAnalysis) -> serde_json::Value {
     })
 }
 
+/// Graduation embed: a lifecycle announcement, not a risk verdict — the
+/// receipt is the migration transaction that created the DEX pool.
+fn graduation_payload(analysis: &LaunchAnalysis, graduation: &Graduation) -> serde_json::Value {
+    let mint = analysis.mint.as_deref().unwrap_or("not identified");
+    json!({
+        "username": "TrenchWatch",
+        "embeds": [{
+            "title": format!("🎓 Graduated to {} — slot {}", graduation.venue_label, graduation.slot),
+            "description": escape_discord(&format!(
+                "A token TrenchWatch tracked from its Pump.fun launch just graduated: \
+                 the bonding curve ended and its liquidity moved to a {venue} pool. \
+                 Centralized-exchange listings are not visible on-chain and are not tracked.",
+                venue = graduation.venue_label,
+            )),
+            "color": 0x22d3ee,
+            "fields": [
+                {"name": "token mint", "value": escape_discord(mint), "inline": true},
+                {"name": "launched at slot", "value": analysis.slot.to_string(), "inline": true},
+                {"name": "launched", "value": escape_discord(&analysis.signature)},
+                {"name": "migration transaction", "value": escape_discord(&graduation.signature)},
+            ],
+            "footer": {"text": "Graduation detected on-chain: the pool-creation transaction IS the migration — same mint, same receipt."}
+        }]
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,5 +368,24 @@ mod tests {
         assert!(text.contains("&lt;sig&gt;&amp;"), "payload must be escaped");
         assert!(text.contains("token mint"));
         assert!(text.contains("on-chain receipts"));
+    }
+
+    #[test]
+    fn graduation_payload_carries_both_receipts() {
+        let mut analysis = analysis_with(Severity::Critical);
+        analysis.signature = "launch-sig".to_string();
+        analysis.mint = Some("<mint>&".to_string());
+        analysis.graduation = Some(crate::risk::Graduation {
+            signature: "migration-sig".to_string(),
+            slot: 43,
+            venue_label: "PumpSwap".to_string(),
+            detected_unix_ms: 1_700_000_001_000,
+        });
+        let payload = graduation_payload(&analysis, analysis.graduation.as_ref().unwrap());
+        let text = payload.to_string();
+        assert!(text.contains("&lt;mint&gt;&amp;"), "mint must be escaped");
+        assert!(text.contains("migration-sig"));
+        assert!(text.contains("launch-sig"));
+        assert!(text.contains("Graduated to PumpSwap"));
     }
 }

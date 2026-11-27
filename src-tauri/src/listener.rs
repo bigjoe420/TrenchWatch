@@ -14,17 +14,16 @@ use crate::pipeline::PipelineHandle;
 use crate::provider::{ChainProvider, LogNotification, WsProvider};
 
 /// Programs whose logs we watch, with human labels for the UI.
+pub const RAYDIUM_PROGRAM: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+pub const ORCA_PROGRAM: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+pub const PUMPFUN_PROGRAM: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+pub const PUMPSWAP_PROGRAM: &str = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
+
 pub const POOL_PROGRAMS: &[(&str, &str)] = &[
-    (
-        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-        "Raydium AMM v4",
-    ),
-    (
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
-        "Orca Whirlpools",
-    ),
-    ("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", "Pump.fun"),
-    ("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA", "PumpSwap"),
+    (RAYDIUM_PROGRAM, "Raydium AMM v4"),
+    (ORCA_PROGRAM, "Orca Whirlpools"),
+    (PUMPFUN_PROGRAM, "Pump.fun"),
+    (PUMPSWAP_PROGRAM, "PumpSwap"),
 ];
 
 /// Per-program log fragments that mark a pool-creation instruction. Raw

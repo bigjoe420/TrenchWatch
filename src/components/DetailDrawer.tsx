@@ -44,6 +44,31 @@ export default function DetailDrawer({
           </dl>
         </section>
 
+        {analysis.graduation && (
+          <section className="drawer-section">
+            <h3>🎓 Graduated to {analysis.graduation.venue_label}</h3>
+            <p className="graduation-note">
+              This token&apos;s bonding-curve phase ended and its liquidity moved to a{" "}
+              {analysis.graduation.venue_label} pool — the on-chain migration that makes it
+              tradeable on a real DEX. TrenchWatch detected it because the pool-creation
+              transaction <em>is</em> the migration: same token mint, same transaction, so the
+              link is cryptographic, not a guess.
+            </p>
+            <dl className="kv">
+              <dt>graduated at slot</dt>
+              <dd className="mono">{analysis.graduation.slot.toLocaleString()}</dd>
+              <dt>migration transaction</dt>
+              <dd className="mono wrap">{analysis.graduation.signature}</dd>
+              <dt>observed</dt>
+              <dd>{absoluteTime(analysis.graduation.detected_unix_ms)}</dd>
+            </dl>
+            <p className="dim">
+              Centralized-exchange listings (MEXC, Bybit, …) are not announced on-chain, so
+              they cannot be observed from chain data and are not tracked.
+            </p>
+          </section>
+        )}
+
         {analysis.flags.length > 0 && (
           <section className="drawer-section">
             <h3>Risk flags — each with its on-chain receipt</h3>

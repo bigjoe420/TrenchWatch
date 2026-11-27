@@ -5,6 +5,8 @@ import { maxSeverity } from "../lib/verdict";
 export interface TableFilters {
   program: string; // "all" or an event program id
   severity: "all" | Severity | "none";
+  /** "all" = everything; "launches" = not yet graduated; "graduated" = new on DEXs. */
+  stage: "all" | "launches" | "graduated";
   hideFlagged: boolean;
 }
 
@@ -60,6 +62,8 @@ export default function LaunchTable({
         }
       }
       if (filters.hideFlagged && analysis.flags.length > 0) return false;
+      if (filters.stage === "graduated" && !analysis.graduation) return false;
+      if (filters.stage === "launches" && analysis.graduation) return false;
       return true;
     });
 
@@ -104,7 +108,17 @@ export default function LaunchTable({
                 <td className="mono-cell" title={analysis.mint ?? "mint not identified from the creation transaction"}>
                   {analysis.mint ? shortAddress(analysis.mint) : "mint unknown"}
                 </td>
-                <td>{programLabel ?? "—"}</td>
+                <td>
+                  {programLabel ?? "—"}
+                  {analysis.graduation && (
+                    <span
+                      className="chip chip-grad"
+                      title={`Graduated to ${analysis.graduation.venue_label} at slot ${analysis.graduation.slot.toLocaleString()} — migration tx ${analysis.graduation.signature}`}
+                    >
+                      🎓 {analysis.graduation.venue_label}
+                    </span>
+                  )}
+                </td>
                 <td className="mono-cell">{analysis.slot.toLocaleString()}</td>
                 <td>
                   <span className="signal-counts">

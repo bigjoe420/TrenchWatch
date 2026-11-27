@@ -69,6 +69,10 @@ pub struct AlertConfig {
     pub min_severity: Severity,
     /// Optional Discord webhook URL. Empty = disabled.
     pub discord_webhook_url: String,
+    /// Graduation alerts: a token moving from its launchpad to a real DEX
+    /// pool (e.g. Pump.fun → PumpSwap) is headline news, so it alerts even
+    /// when no risk flag fired. Default: on.
+    pub graduation_alerts: bool,
 }
 
 impl Default for AlertConfig {
@@ -77,6 +81,7 @@ impl Default for AlertConfig {
             desktop_notifications: true,
             min_severity: Severity::Critical,
             discord_webhook_url: String::new(),
+            graduation_alerts: true,
         }
     }
 }

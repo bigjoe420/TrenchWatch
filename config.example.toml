@@ -28,6 +28,10 @@ min_severity = "critical"
 # Optional Discord webhook for receipts-style launch alerts.
 # Leave empty to disable. The app only POSTs to this exact URL.
 discord_webhook_url = ""
+# Announce when a tracked token graduates from its launchpad to a real DEX
+# pool (e.g. Pump.fun -> PumpSwap). These fire even when no risk flag did —
+# a graduation is a lifecycle event, not a verdict.
+graduation_alerts = true
 
 [storage]
 # Directory for the local event store (relative to the app data dir).

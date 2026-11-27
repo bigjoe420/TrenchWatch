@@ -71,6 +71,33 @@ pub fn spawn(
                 tracing::warn!(%error, signature = %event.signature, "analysis persist failed");
             }
 
+            // Lifecycle: a PumpSwap pool creation whose mint matches an
+            // earlier Pump.fun launch IS that token's graduation — the
+            // migration transaction creates the PumpSwap pool. Link the two
+            // receipts and alert; if we never saw the Pump.fun launch (app
+            // was off, mint unidentified) there is honestly nothing to link.
+            if event.program == crate::listener::PUMPSWAP_PROGRAM {
+                if let Some(mint) = outcome.analysis.mint.as_deref() {
+                    let graduated = store.lock().ok().and_then(|mut guard| {
+                        let launch_signature =
+                            guard.launch_signature_by_mint(mint, crate::listener::PUMPFUN_PROGRAM)?;
+                        guard.mark_graduated(
+                            &launch_signature,
+                            crate::risk::Graduation {
+                                signature: event.signature.clone(),
+                                slot: event.slot,
+                                venue_label: event.program_label.clone(),
+                                detected_unix_ms: now,
+                            },
+                        )
+                    });
+                    if let Some(updated) = graduated {
+                        tracing::info!(%mint, "pump.fun token graduated to pumpswap");
+                        alerts.notify_graduation(&updated).await;
+                    }
+                }
+            }
+
             alerts.notify(&outcome.analysis).await;
         }
         tracing::info!("analysis stage drained");

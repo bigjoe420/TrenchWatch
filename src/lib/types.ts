@@ -26,6 +26,15 @@ export interface NotAssessed {
   reason: string;
 }
 
+export interface Graduation {
+  /** Migration/pool-creation transaction — the on-chain receipt. */
+  signature: string;
+  slot: number;
+  /** Human label of the DEX the token graduated to (e.g. "PumpSwap"). */
+  venue_label: string;
+  detected_unix_ms: number;
+}
+
 export interface LaunchAnalysis {
   signature: string;
   slot: number;
@@ -34,6 +43,8 @@ export interface LaunchAnalysis {
   not_assessed: NotAssessed[];
   assessed_at_unix_ms: number;
   dev_wallet: string | null;
+  /** Set once this token is seen moving from its launchpad to a DEX pool. */
+  graduation?: Graduation | null;
 }
 
 export interface LaunchEvent {
@@ -65,6 +76,8 @@ export interface AlertConfig {
   desktop_notifications: boolean;
   min_severity: Severity;
   discord_webhook_url: string;
+  /** Announce graduations (launchpad → DEX pool) even when no risk flag fired. */
+  graduation_alerts: boolean;
 }
 
 export const SIGNAL_LABELS: Record<SignalKind, string> = {
