@@ -1,3 +1,4 @@
+import { openUrl } from "../lib/ipc";
 import { absoluteTime } from "../lib/format";
 import { SIGNAL_LABELS, type LaunchAnalysis, type Severity } from "../lib/types";
 import { verdictText } from "../lib/verdict";
@@ -7,6 +8,32 @@ const SEVERITY_LABEL: Record<Severity, string> = {
   warn: "WARNING",
   info: "NOTE",
 };
+
+/** Where to look a token up "in the wild" — all https, all opened via the
+ *  vetted open_url IPC, never with any app data attached. */
+const WILD_LINKS: { label: string; build: (mint: string) => string }[] = [
+  { label: "pump.fun", build: (mint) => `https://pump.fun/coin/${mint}` },
+  { label: "dexscreener", build: (mint) => `https://dexscreener.com/solana/${mint}` },
+  { label: "solscan", build: (mint) => `https://solscan.io/token/${mint}` },
+  { label: "birdeye", build: (mint) => `https://birdeye.so/token/${mint}` },
+];
+
+/** Receipts link straight to the explorer so the evidence is one click
+ *  from the claim. */
+function TxLink({ signature }: { signature: string }) {
+  return (
+    <a
+      className="explorer-link mono wrap"
+      href={`https://solscan.io/tx/${signature}`}
+      onClick={(event) => {
+        event.preventDefault();
+        void openUrl(`https://solscan.io/tx/${signature}`);
+      }}
+    >
+      {signature}
+    </a>
+  );
+}
 
 export default function DetailDrawer({
   analysis,
@@ -32,7 +59,9 @@ export default function DetailDrawer({
           <h3>Identity</h3>
           <dl className="kv">
             <dt>signature</dt>
-            <dd className="mono wrap">{analysis.signature}</dd>
+            <dd>
+              <TxLink signature={analysis.signature} />
+            </dd>
             <dt>slot</dt>
             <dd className="mono">{analysis.slot.toLocaleString()}</dd>
             <dt>token mint</dt>
@@ -43,6 +72,24 @@ export default function DetailDrawer({
             <dd>{absoluteTime(analysis.assessed_at_unix_ms)}</dd>
           </dl>
         </section>
+
+        {analysis.mint && (
+          <section className="drawer-section">
+            <h3>In the wild</h3>
+            <p className="dim">See this token where it actually lives — no data leaves the app.</p>
+            <div className="wild-links">
+              {WILD_LINKS.map(({ label, build }) => (
+                <button
+                  key={label}
+                  className="wild-link"
+                  onClick={() => void openUrl(build(analysis.mint as string))}
+                >
+                  {label} ↗
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {analysis.graduation && (
           <section className="drawer-section">
@@ -64,7 +111,9 @@ export default function DetailDrawer({
                   : `${analysis.flags.filter((f) => f.severity === "critical").length} critical, ${analysis.flags.filter((f) => f.severity === "warn").length} warning, ${analysis.flags.filter((f) => f.severity === "info").length} note at birth`}
               </dd>
               <dt>migration transaction</dt>
-              <dd className="mono wrap">{analysis.graduation.signature}</dd>
+              <dd>
+                <TxLink signature={analysis.graduation.signature} />
+              </dd>
               <dt>observed</dt>
               <dd>{absoluteTime(analysis.graduation.detected_unix_ms)}</dd>
             </dl>
