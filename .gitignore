@@ -24,6 +24,7 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+dev-run.cmd
 .vscode/*
 !.vscode/extensions.json
 .idea/
