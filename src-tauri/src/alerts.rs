@@ -23,6 +23,11 @@ pub type SharedAlertConfig = std::sync::Arc<Mutex<AlertConfig>>;
 
 const DEDUPE_CAP: usize = 10_000;
 
+/// Webhook avatar — the repo emblem, served from the repo itself so the
+/// alerts post with the TrenchWatch mark in every channel.
+const DISCORD_AVATAR_URL: &str =
+    "https://raw.githubusercontent.com/bigjoe420/TrenchWatch/main/assets/discord-avatar.png";
+
 pub struct Alerts {
     config: SharedAlertConfig,
     app: AppHandle,
@@ -258,6 +263,7 @@ fn discord_payload(analysis: &LaunchAnalysis) -> serde_json::Value {
 
     json!({
         "username": "TrenchWatch",
+        "avatar_url": DISCORD_AVATAR_URL,
         "embeds": [{
             "title": format!("{} — slot {}", severity_word(worst), analysis.slot),
             "description": headline,
@@ -278,6 +284,7 @@ fn graduation_payload(analysis: &LaunchAnalysis, graduation: &Graduation) -> ser
     let mint = analysis.mint.as_deref().unwrap_or("not identified");
     json!({
         "username": "TrenchWatch",
+        "avatar_url": DISCORD_AVATAR_URL,
         "embeds": [{
             "title": format!("🎓 Graduated to {} — slot {}", graduation.venue_label, graduation.slot),
             "description": escape_discord(&format!(
