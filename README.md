@@ -35,6 +35,14 @@ been assessed yet:
 
 <img src="assets/screenshots/evidence-drawer.png" alt="Launch analysis drawer: critical flags with plain-language explanations, observed slot receipts, and field-guide references" width="100%">
 
+## Watch it fire live
+
+A community TrenchWatch watcher posts real graduations and critical-flag
+receipts as they happen — no setup required:
+
+**[Join the TrenchWatch alerts server](https://discord.gg/SNjAp6FQB)**
+(the same invite is one click away in the app's top bar).
+
 ## What it deliberately cannot do
 
 TrenchWatch is **read-only by design**: no trading, no private keys, no

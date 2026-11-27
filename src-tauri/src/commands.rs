@@ -115,3 +115,22 @@ pub async fn update_alerts_config(
         .map_err(|e| format!("could not write config.toml: {e}"))?;
     Ok(())
 }
+
+/// Open an https link in the user's browser (used for the community
+/// Discord invite). https-only by construction — the app never needs to
+/// hand anything else to the OS shell.
+#[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    validate_external_url(&url)?;
+    open::that(&url).map_err(|e| format!("could not open the link: {e}"))
+}
+
+/// The only external links the UI offers are https; refuse anything else
+/// so the command can never become a general shell-launch primitive.
+fn validate_external_url(url: &str) -> Result<(), String> {
+    if url.starts_with("https://") && url.len() <= 2048 {
+        Ok(())
+    } else {
+        Err("only https links can be opened".to_string())
+    }
+}

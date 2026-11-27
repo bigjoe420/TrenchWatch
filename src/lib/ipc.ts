@@ -34,3 +34,10 @@ export async function getAlertsConfig(): Promise<AlertConfig> {
 export async function updateAlertsConfig(config: AlertConfig): Promise<void> {
   return invoke<void>("update_alerts_config", { alerts: config });
 }
+
+/** The public TrenchWatch alerts server — same invite as the README. */
+export const DISCORD_INVITE = "https://discord.gg/SNjAp6FQB";
+
+export async function openUrl(url: string): Promise<void> {
+  return invoke<void>("open_url", { url });
+}

@@ -745,6 +745,14 @@ code {
   box-shadow: 0 0 10px rgba(255, 161, 0, 0.15);
 }
 
+/* Discord invite — Discord's blurple as a hover accent only, so the bar
+   stays instrument-neutral at rest. */
+.icon-discord:hover {
+  color: #8b9dff;
+  border-color: rgba(88, 101, 242, 0.55);
+  box-shadow: 0 0 10px rgba(88, 101, 242, 0.2);
+}
+
 .settings-row {
   display: flex;
   flex-direction: column;

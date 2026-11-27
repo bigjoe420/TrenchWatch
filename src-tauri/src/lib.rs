@@ -108,7 +108,8 @@ pub fn run() -> anyhow::Result<()> {
             commands::get_recent_analyses,
             commands::get_analysis,
             commands::get_alerts_config,
-            commands::update_alerts_config
+            commands::update_alerts_config,
+            commands::open_url
         ])
         .run(tauri::generate_context!())
         .map_err(|e| anyhow::anyhow!("tauri runtime error: {e}"))
