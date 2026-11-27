@@ -1,10 +1,5 @@
 # TrenchWatch
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
-  <img src="assets/logo-light.png" alt="TrenchWatch — Solana launch monitor" width="560">
-</picture>
-
 <img src="assets/hero.png" alt="TrenchWatch banner: radar sweep over Solana launches" width="100%">
 
 Real-time monitor for brand-new token launches on Solana mainnet-beta, with
@@ -27,6 +22,18 @@ ingestion under rate limits, account parsing, and evidence-backed heuristics.
 - **Shows** a dense mission-control dashboard: live table, detail drawer with
   full evidence receipts, filters.
 - **Alerts** via desktop notification and optional Discord webhook.
+
+## See it in action
+
+Running live against Solana mainnet-beta — real launches, real verdicts:
+
+<img src="assets/screenshots/dashboard.png" alt="Live dashboard: verdict filter, token mints, launchpad, slot, and per-launch signal counts" width="100%">
+
+Every row opens a full evidence receipt — identity, signature, the exact
+risk flags with their on-chain proof, and an honest list of what hasn't
+been assessed yet:
+
+<img src="assets/screenshots/evidence-drawer.png" alt="Launch analysis drawer: critical flags with plain-language explanations, observed slot receipts, and field-guide references" width="100%">
 
 ## What it deliberately cannot do
 

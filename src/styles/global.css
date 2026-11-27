@@ -108,6 +108,7 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
   padding: 10px 18px;
   background: rgba(9, 9, 11, 0.72);
   backdrop-filter: blur(14px);
@@ -152,8 +153,10 @@ code {
 }
 
 /* Narrow windows: drop the stored/dropped counters before the status pill
-   truncates — the pill is the one control a new user must always read. */
-@media (max-width: 1180px) {
+   truncates — the pill is the one control a new user must always read.
+   Breakpoint set from the real content width: stored/dropped/uptime +
+   the helius meter + a full status pill + the gear need ~1.5k pixels. */
+@media (max-width: 1560px) {
   .topbar-right .stat:not(.stat-helius) {
     display: none;
   }

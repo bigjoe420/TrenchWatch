@@ -29,6 +29,11 @@ export default function TopBar({
       </div>
 
       <div className="topbar-right">
+        {/* First in the row so the cluster can never push the only
+            interactive control off the window's right edge. */}
+        <button className="icon-button" onClick={onOpenSettings} aria-label="Alert settings" title="Alert settings">
+          ⚙
+        </button>
         {status && (
           <>
             <span className="stat">
@@ -67,9 +72,6 @@ export default function TopBar({
             {status ? status.listener : "connecting…"}
           </span>
         </span>
-        <button className="icon-button" onClick={onOpenSettings} aria-label="Alert settings" title="Alert settings">
-          ⚙
-        </button>
       </div>
     </header>
   );
