@@ -57,6 +57,10 @@ before any functional code.
 
 ## Quickstart (~10 minutes on a fresh Windows machine)
 
+No accounts, no API keys, no cost: TrenchWatch runs entirely on Solana's
+free public RPC out of the box — everything below works as-is. The optional
+[Helius key](#optional-helius-enrichment) is an upgrade, not a requirement.
+
 Prerequisites: [Node.js](https://nodejs.org) (LTS), the
 [Rust toolchain](https://rustup.rs) (`rustup-init.exe` → default install,
 includes MSVC build tools via Visual Studio Build Tools), and WebView2
@@ -69,9 +73,12 @@ npm install
 npm run tauri dev
 ```
 
-First run uses built-in defaults (public endpoint, no Discord). To
-customize, copy `config.example.toml` to `config.toml` next to the app and
-edit — see the [config reference](#configuration) below.
+That's it — the app opens, connects to mainnet-beta, and starts surfacing
+launches within a minute. It runs entirely on your machine; there is no
+server to host and nothing to deploy. First run uses built-in defaults
+(public endpoint, no Discord, no Helius). To customize, copy
+`config.example.toml` to `config.toml` next to the app and edit — see the
+[config reference](#configuration) below.
 
 ## Configuration
 
@@ -90,6 +97,10 @@ key is documented in [config.example.toml](config.example.toml):
 | `storage.store_dir` | `"store"` | Local event store location. |
 
 ### Optional: Helius enrichment
+
+Skip this section and everything still works — this is purely an upgrade
+for faster, more reliable analysis reads, and it only spends credits on
+those reads (never on the launch stream).
 
 1. Copy your API key into `api_key` in `config.toml` (next to the app data
    directory, already gitignored — never the repo).
