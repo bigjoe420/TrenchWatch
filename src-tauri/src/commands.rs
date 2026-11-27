@@ -36,6 +36,13 @@ pub struct EventsResponse {
     pub total_stored: usize,
 }
 
+#[derive(Debug, Serialize)]
+pub struct RpcSetupStatus {
+    /// Whether a Helius API key is on file. The key itself never leaves the
+    /// backend — the wizard only needs to know if the step is already done.
+    pub api_key_configured: bool,
+}
+
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<StatusResponse, String> {
     let status = state.status.borrow().clone();
@@ -123,6 +130,34 @@ pub async fn update_alerts_config(
 pub async fn open_url(url: String) -> Result<(), String> {
     validate_external_url(&url)?;
     open::that(&url).map_err(|e| format!("could not open the link: {e}"))
+}
+
+#[tauri::command]
+pub async fn get_rpc_setup_status(state: State<'_, AppState>) -> Result<RpcSetupStatus, String> {
+    let config = state.config.lock().map_err(|_| "config lock poisoned")?;
+    Ok(RpcSetupStatus {
+        api_key_configured: !config.rpc.api_key.trim().is_empty(),
+    })
+}
+
+/// Install (or clear, with an empty string) the Helius API key from the
+/// first-run wizard. Persists to config.toml and applies to the live meter;
+/// the launch stream itself is unaffected either way.
+#[tauri::command]
+pub async fn set_api_key(state: State<'_, AppState>, api_key: String) -> Result<(), String> {
+    let key = api_key.trim().to_string();
+    if key.len() > 256 {
+        return Err("that api key looks too long".to_string());
+    }
+    let mut config = state.config.lock().map_err(|_| "config lock poisoned")?;
+    config.rpc.api_key = key.clone();
+    config
+        .save(&state.app_data_dir)
+        .map_err(|e| format!("could not write config.toml: {e}"))?;
+    if let Some(meter) = &state.helius {
+        meter.set_api_key(&key);
+    }
+    Ok(())
 }
 
 /// The only external links the UI offers are https; refuse anything else

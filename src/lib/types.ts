@@ -80,6 +80,13 @@ export interface AlertConfig {
   discord_critical_webhook_url: string;
   /** Announce graduations (launchpad → DEX pool) even when no risk flag fired. */
   graduation_alerts: boolean;
+  /** False until the first-run setup wizard is completed (or skipped). */
+  setup_completed: boolean;
+}
+
+/** Whether a Helius API key is on file. The key itself never reaches the UI. */
+export interface RpcSetupStatus {
+  api_key_configured: boolean;
 }
 
 export const SIGNAL_LABELS: Record<SignalKind, string> = {

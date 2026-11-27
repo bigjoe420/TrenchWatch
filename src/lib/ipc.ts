@@ -4,6 +4,7 @@ import type {
   AlertConfig,
   LaunchAnalysis,
   LaunchEvent,
+  RpcSetupStatus,
   StatusResponse,
 } from "./types";
 
@@ -33,6 +34,15 @@ export async function getAlertsConfig(): Promise<AlertConfig> {
 
 export async function updateAlertsConfig(config: AlertConfig): Promise<void> {
   return invoke<void>("update_alerts_config", { alerts: config });
+}
+
+export async function getRpcSetupStatus(): Promise<RpcSetupStatus> {
+  return invoke<RpcSetupStatus>("get_rpc_setup_status");
+}
+
+/** Write-only: the key goes to the backend and is never read back. */
+export async function setApiKey(apiKey: string): Promise<void> {
+  return invoke<void>("set_api_key", { apiKey });
 }
 
 /** The public TrenchWatch alerts server — same invite as the README. */

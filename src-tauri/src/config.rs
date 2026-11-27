@@ -77,6 +77,10 @@ pub struct AlertConfig {
     /// pool (e.g. Pump.fun → PumpSwap) is headline news, so it alerts even
     /// when no risk flag fired. Default: on.
     pub graduation_alerts: bool,
+    /// Set once the first-run setup wizard has been completed (or skipped).
+    /// Default false so a fresh install is walked through the Helius key and
+    /// Discord webhook before the dashboard takes over.
+    pub setup_completed: bool,
 }
 
 impl Default for AlertConfig {
@@ -87,6 +91,7 @@ impl Default for AlertConfig {
             discord_webhook_url: String::new(),
             discord_critical_webhook_url: String::new(),
             graduation_alerts: true,
+            setup_completed: false,
         }
     }
 }
@@ -194,6 +199,7 @@ mod tests {
         assert!(cfg.alerts.desktop_notifications);
         assert_eq!(cfg.alerts.min_severity, Severity::Critical);
         assert!(cfg.alerts.discord_webhook_url.is_empty());
+        assert!(!cfg.alerts.setup_completed); // fresh installs get the wizard
     }
 
     #[test]

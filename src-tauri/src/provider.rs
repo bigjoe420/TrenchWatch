@@ -219,7 +219,9 @@ type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 ///
 /// The key is never logged and never appears in `Debug` output.
 pub struct HeliusMeter {
-    api_key: String,
+    /// Interior-mutable so the first-run wizard can install a key at runtime.
+    /// Still never logged and never appears in `Debug` output.
+    api_key: Mutex<String>,
     cap: u64,
     state: Mutex<MeterState>,
     /// True once per day when the cap-block has been logged.
@@ -248,7 +250,7 @@ impl std::fmt::Debug for HeliusMeter {
 impl HeliusMeter {
     pub fn new(api_key: &str, cap: u64) -> Self {
         Self {
-            api_key: api_key.trim().to_string(),
+            api_key: Mutex::new(api_key.trim().to_string()),
             cap,
             state: Mutex::new(MeterState {
                 day: today(),
@@ -263,7 +265,20 @@ impl HeliusMeter {
     }
 
     fn endpoint(&self) -> String {
-        format!("https://mainnet.helius-rpc.com/?api-key={}", self.api_key)
+        let key = self
+            .api_key
+            .lock()
+            .map(|key| key.clone())
+            .unwrap_or_default();
+        format!("https://mainnet.helius-rpc.com/?api-key={}", key)
+    }
+
+    /// Install or replace the key at runtime (first-run setup). An empty
+    /// string disables paid enrichment; the public fallback keeps working.
+    pub fn set_api_key(&self, api_key: &str) {
+        if let Ok(mut key) = self.api_key.lock() {
+            *key = api_key.trim().to_string();
+        }
     }
 
     /// Spend one call if the daily budget allows. Rolls the counter over at
@@ -294,7 +309,7 @@ impl HeliusMeter {
     }
 
     pub fn enabled(&self) -> bool {
-        !self.api_key.is_empty()
+        self.api_key.lock().map(|key| !key.is_empty()).unwrap_or(false)
     }
 
     /// Log the cap-block at most once per day; returns true if this call
@@ -738,6 +753,20 @@ mod tests {
         let text = format!("{meter:?}");
         assert!(!text.contains("super-secret-key"));
         assert!(text.contains("[redacted]"));
+    }
+
+    #[test]
+    fn meter_set_api_key_applies_at_runtime() {
+        let meter = HeliusMeter::new("", 5);
+        assert!(!meter.enabled());
+        meter.set_api_key("  live-key  "); // trims like fresh installs do
+        assert!(meter.enabled());
+        assert_eq!(
+            meter.endpoint(),
+            "https://mainnet.helius-rpc.com/?api-key=live-key"
+        );
+        meter.set_api_key("");
+        assert!(!meter.enabled());
     }
 
     #[test]

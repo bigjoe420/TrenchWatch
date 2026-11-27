@@ -109,6 +109,8 @@ pub fn run() -> anyhow::Result<()> {
             commands::get_analysis,
             commands::get_alerts_config,
             commands::update_alerts_config,
+            commands::get_rpc_setup_status,
+            commands::set_api_key,
             commands::open_url
         ])
         .run(tauri::generate_context!())

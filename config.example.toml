@@ -36,6 +36,9 @@ discord_critical_webhook_url = ""
 # pool (e.g. Pump.fun -> PumpSwap). These fire even when no risk flag did —
 # a graduation is a lifecycle event, not a verdict.
 graduation_alerts = true
+# Set by the app after the first-run setup wizard finishes. False (or absent)
+# = show the wizard before the dashboard on next launch.
+setup_completed = false
 
 [storage]
 # Directory for the local event store (relative to the app data dir).

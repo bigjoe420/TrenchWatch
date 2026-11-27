@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import DetailDrawer from "./components/DetailDrawer";
 import LaunchTable, { type TableFilters } from "./components/LaunchTable";
+import OnboardingWizard from "./components/OnboardingWizard";
 import SettingsDrawer from "./components/SettingsDrawer";
 import TopBar from "./components/TopBar";
 import { getAlertsConfig, getAnalysis, getRecentAnalyses, getRecentEvents, getStatus } from "./lib/ipc";
@@ -24,6 +25,16 @@ export default function App() {
   const selectedSignature = useRef<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [alertConfig, setAlertConfig] = useState<AlertConfig | null>(null);
+  const [setupDone, setSetupDone] = useState<boolean | null>(null); // null = still loading
+
+  useEffect(() => {
+    getAlertsConfig()
+      .then((config) => {
+        setAlertConfig(config);
+        setSetupDone(config.setup_completed);
+      })
+      .catch(() => setSetupDone(true)); // backend down: don't block the shell
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -79,6 +90,10 @@ export default function App() {
       .then(setAlertConfig)
       .catch(() => setAlertConfig(null));
   }, []);
+
+  if (setupDone === false) {
+    return <OnboardingWizard onDone={() => setSetupDone(true)} />;
+  }
 
   return (
     <div className="app-shell">
