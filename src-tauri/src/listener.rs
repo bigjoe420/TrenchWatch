@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
 
 use crate::pipeline::PipelineHandle;
-use crate::provider::{ChainProvider, LogNotification, WsProvider};
+use crate::provider::{ChainProvider, LogNotification, ProviderError, WsProvider};
 
 /// Programs whose logs we watch, with human labels for the UI.
 pub const RAYDIUM_PROGRAM: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
@@ -90,6 +90,24 @@ fn backoff_secs(attempt: u32) -> u64 {
     capped + jitter
 }
 
+/// Cooldown after a 429 from the endpoint. Helius rate-limits per IP and caps
+/// concurrent sessions per key; reconnecting every ~30s keeps the limiter hot
+/// and extends the outage. Back off for minutes instead — the server-side
+/// session/inactivity timers need time to clear either way.
+const RATE_LIMIT_COOLDOWN_SECS: u64 = 300;
+
+fn is_rate_limited(error: &ProviderError) -> bool {
+    error.to_string().contains("429")
+}
+
+fn retry_secs(error: &ProviderError, attempt: u32) -> u64 {
+    if is_rate_limited(error) {
+        RATE_LIMIT_COOLDOWN_SECS
+    } else {
+        backoff_secs(attempt)
+    }
+}
+
 fn is_pool_creation(program: &str, logs: &[String]) -> bool {
     let matches_marker = CREATION_MARKERS
         .iter()
@@ -158,8 +176,8 @@ pub async fn spawn(
                 Ok(provider) => provider,
                 Err(error) => {
                     attempt += 1;
-                    let secs = backoff_secs(attempt);
-                    tracing::warn!(%error, attempt, "connect failed");
+                    let secs = retry_secs(&error, attempt);
+                    tracing::warn!(%error, attempt, secs, "connect failed");
                     let _ = status.send(ListenerStatus::Reconnecting {
                         attempt,
                         in_secs: secs,
@@ -297,5 +315,16 @@ mod tests {
         assert!((2..=5).contains(&backoff_secs(1))); // base 2 + 0..2s jitter
         assert!((8..=10).contains(&backoff_secs(3)));
         assert!(backoff_secs(100) <= 62); // capped at 60 + jitter
+    }
+
+    #[test]
+    fn rate_limit_gets_long_cooldown() {
+        use crate::provider::ProviderError;
+        let limited = ProviderError::Protocol("transport error: HTTP error: 429 Too Many Requests".into());
+        let plain = ProviderError::Protocol("connection refused".into());
+        assert!(is_rate_limited(&limited));
+        assert!(!is_rate_limited(&plain));
+        assert_eq!(retry_secs(&limited, 50), RATE_LIMIT_COOLDOWN_SECS);
+        assert!(retry_secs(&plain, 1) <= 62);
     }
 }

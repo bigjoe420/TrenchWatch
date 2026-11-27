@@ -119,8 +119,14 @@ async fn connect_with_retry(
             }
             Err(error) => {
                 attempt += 1;
-                let secs = 2u64.saturating_pow(attempt.min(5)).min(60);
-                tracing::warn!(%error, attempt, "analysis provider connect failed");
+                // 429: back off for minutes — hammering keeps Helius's
+                // rate limiter hot (same policy as the listener).
+                let secs = if error.to_string().contains("429") {
+                    300
+                } else {
+                    2u64.saturating_pow(attempt.min(5)).min(60)
+                };
+                tracing::warn!(%error, attempt, secs, "analysis provider connect failed");
                 sleep(Duration::from_secs(secs)).await;
             }
         }
