@@ -31,7 +31,12 @@ tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", features = ["ring"] }
 async-trait = "0.1"
 futures-util = "0.3"
+# Read-only JSON-RPC over HTTP. Generic methods (getTransaction etc.) are not
+# served by standard Solana websocket endpoints — only pubsub is — so the
+# read path must be HTTP even though streaming stays on the websocket.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 crc32fast = "1"
+base64 = "0.22"
 
 # Non-goals (see docs/THREAT_MODEL.md): this crate must never depend on
 # keypair, signing, or transaction-building crates. Anything that could

@@ -97,8 +97,14 @@ fn is_pool_creation(program: &str, logs: &[String]) -> bool {
         .iter()
         .find(|(marker_program, _)| *marker_program == program)
         .map(|(_, markers)| {
-            logs.iter()
-                .any(|log| markers.iter().any(|m| log.contains(m)))
+            logs.iter().any(|log| {
+                // Suffix match, not substring: third-party aggregators CPI-ing
+                // into the launchpad emit logs like "Instruction:
+                // CreateAtaWithCloseAuthority", which would false-positive
+                // the "Instruction: Create" marker if matched by substring.
+                let log = log.trim_end();
+                markers.iter().any(|marker| log.ends_with(marker))
+            })
         })
         .unwrap_or(false);
     // Failed transactions still emit "Instruction: <X>" logs — a launch
@@ -252,6 +258,37 @@ mod tests {
             subscription_id: 0,
         };
         assert!(to_launch_event(reverted).is_none());
+    }
+
+    #[test]
+    fn create_suffix_does_not_match_longer_instruction_names() {
+        // A LaunchLab-style aggregator CPI-ing into pump.fun creates token
+        // accounts and logs "Instruction: CreateAtaWithCloseAuthority" —
+        // that is an account-setup log on a swap tx, not a token launch.
+        let pump = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+        let aggregator_tx = LogNotification {
+            signature: "sig".into(),
+            slot: 1,
+            program: pump.into(),
+            logs: vec![
+                "Program log: Instruction: CreateAtaWithCloseAuthority".into(),
+                "Program log: Instruction: SwapTobV3".into(),
+            ],
+            subscription_id: 0,
+        };
+        assert!(to_launch_event(aggregator_tx).is_none());
+
+        let real_create = LogNotification {
+            signature: "sig".into(),
+            slot: 2,
+            program: pump.into(),
+            logs: vec![
+                "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P invoke [1]".into(),
+                "Program log: Instruction: Create".into(),
+            ],
+            subscription_id: 0,
+        };
+        assert!(to_launch_event(real_create).is_some());
     }
 
     #[test]

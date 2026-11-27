@@ -6,6 +6,7 @@ use tauri::State;
 
 use crate::listener::LaunchEvent;
 use crate::pipeline;
+use crate::risk::LaunchAnalysis;
 use crate::AppState;
 
 #[derive(Debug, Serialize)]
@@ -48,4 +49,22 @@ pub async fn get_recent_events(
         events,
         total_stored: store.len(),
     })
+}
+
+#[tauri::command]
+pub async fn get_recent_analyses(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<Vec<LaunchAnalysis>, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    Ok(store.recent_analyses(limit.unwrap_or(100)))
+}
+
+#[tauri::command]
+pub async fn get_analysis(
+    state: State<'_, AppState>,
+    signature: String,
+) -> Result<Option<LaunchAnalysis>, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    Ok(store.analysis_for(&signature).cloned())
 }

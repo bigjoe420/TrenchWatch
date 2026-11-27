@@ -11,7 +11,7 @@
 
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -86,7 +86,98 @@ pub struct LogNotification {
     pub subscription_id: u64,
 }
 
+/// An SPL-token mint account, decoded from raw account data.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MintAccount {
+    pub supply_raw: u64,
+    pub decimals: u8,
+    /// `None` = authority revoked.
+    pub mint_authority: Option<String>,
+    /// `None` = authority revoked.
+    pub freeze_authority: Option<String>,
+}
+
+#[derive(Debug, Error)]
+pub enum MintParseError {
+    #[error("mint account data is {0} bytes; expected 82 (SPL token layout)")]
+    BadLength(usize),
+    #[error("mint account is not initialized")]
+    NotInitialized,
+}
+
+/// Decode an 82-byte SPL token mint. Hand-rolled (no spl-token dep) — the
+/// layout is part of the teaching value, and one less dependency is one
+/// less supply-chain surface.
+pub fn parse_mint_account(data: &[u8]) -> Result<MintAccount, MintParseError> {
+    if data.len() != 82 {
+        return Err(MintParseError::BadLength(data.len()));
+    }
+    if data[45] == 0 {
+        return Err(MintParseError::NotInitialized);
+    }
+    let authority = |tag: u8, key: &[u8]| {
+        if tag == 0 {
+            None
+        } else {
+            // SPL pubkeys are displayed base58, not base64.
+            Some(base58_encode(key))
+        }
+    };
+    Ok(MintAccount {
+        supply_raw: u64::from_le_bytes(
+            data[36..44]
+                .try_into()
+                .map_err(|_| MintParseError::BadLength(data.len()))?,
+        ),
+        decimals: data[44],
+        mint_authority: authority(data[0], &data[4..36]),
+        freeze_authority: authority(data[46], &data[47..79]),
+    })
+}
+
+fn base58_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut digits = vec![0u8; bytes.len() * 138 / 100 + 1];
+    let mut length = 0usize;
+    for &byte in bytes {
+        let mut carry = u32::from(byte);
+        let mut index = 0;
+        // Run the carry through the active digits; a byte that fits without
+        // overflow still lands in digits[0], so `index` (not an overflow
+        // counter) is what advances the significant length.
+        while carry > 0 || index < length {
+            carry += u32::from(digits[index]) << 8;
+            digits[index] = (carry % 58) as u8;
+            carry /= 58;
+            index += 1;
+        }
+        length = index;
+    }
+    let mut zeros = 0usize;
+    while zeros < bytes.len() && bytes[zeros] == 0 {
+        zeros += 1;
+    }
+    let mut encoded = String::with_capacity(zeros + length);
+    for _ in 0..zeros {
+        encoded.push('1');
+    }
+    for digit in digits[..length].iter().rev() {
+        encoded.push(ALPHABET[*digit as usize] as char);
+    }
+    encoded
+}
+
+/// A token account entry from `getTokenLargestAccounts`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HolderAmount {
+    pub address: String,
+    pub amount_raw: u64,
+}
+
 /// The seam for swapping transports (public websocket now, Helius later).
+///
+/// Read methods open no subscriptions: they send one request and wait for
+/// the matching response, skipping anything else on the socket.
 #[async_trait]
 pub trait ChainProvider: Send {
     /// Next matching log notification, or an error (caller decides whether to
@@ -99,13 +190,31 @@ pub trait ChainProvider: Send {
         programs: &[&str],
         commitment: &str,
     ) -> Result<(), ProviderError>;
+
+    /// Mint account decoded from raw data. `Ok(None)` = account missing.
+    async fn get_mint(&mut self, mint: &str) -> Result<Option<MintAccount>, ProviderError>;
+
+    /// Largest token accounts for a mint (may be fewer than 20).
+    async fn get_holders(&mut self, mint: &str) -> Result<Vec<HolderAmount>, ProviderError>;
+
+    /// Fully parsed transaction (encoding `jsonParsed`), `None` if pruned.
+    async fn get_parsed_transaction(
+        &mut self,
+        signature: &str,
+    ) -> Result<Option<serde_json::Value>, ProviderError>;
 }
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Websocket JSON-RPC provider for a standard Solana RPC endpoint.
+///
+/// Streaming (`logsSubscribe`/`next_event`) rides the websocket; the
+/// one-shot read methods go over HTTP, because standard Solana websocket
+/// endpoints do not serve generic JSON-RPC methods at all.
 pub struct WsProvider {
     ws_url: String,
+    http_url: String,
+    http: reqwest::Client,
     stream: WsStream,
     /// subscription id (== request id we used) -> program id
     subscriptions: HashMap<u64, String>,
@@ -121,8 +230,17 @@ impl WsProvider {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let (stream, _) = connect_async(ws_url).await?;
+        let http_url = ws_url
+            .replacen("wss://", "https://", 1)
+            .replacen("ws://", "http://", 1);
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| ProviderError::Protocol(format!("http client: {e}")))?;
         Ok(Self {
             ws_url: ws_url.to_string(),
+            http_url,
+            http,
             stream,
             subscriptions: HashMap::new(),
             next_id: 1,
@@ -131,6 +249,28 @@ impl WsProvider {
 
     pub fn url(&self) -> &str {
         &self.ws_url
+    }
+
+    /// Send one whitelisted read-only request over HTTP and return the
+    /// `result` field. HTTP keeps no connection state, so this is safe to
+    /// call concurrently with the streaming loop on the same provider.
+    async fn call(&mut self, method: &str, params: Value) -> Result<Value, ProviderError> {
+        let request = RpcRequest::new(self.next_id, method, params)?;
+        self.next_id += 1;
+        let response: Value = self
+            .http
+            .post(&self.http_url)
+            .json(&request.to_json())
+            .send()
+            .await
+            .map_err(|e| ProviderError::Protocol(format!("{method}: http send: {e}")))?
+            .json()
+            .await
+            .map_err(|e| ProviderError::Protocol(format!("{method}: http decode: {e}")))?;
+        if let Some(error) = response.get("error") {
+            return Err(ProviderError::Rpc(format!("{method}: {error}")));
+        }
+        Ok(response.get("result").cloned().unwrap_or(Value::Null))
     }
 
     async fn send(&mut self, request: &RpcRequest) -> Result<(), ProviderError> {
@@ -277,11 +417,127 @@ impl ChainProvider for WsProvider {
             }
         }
     }
+
+    async fn get_mint(&mut self, mint: &str) -> Result<Option<MintAccount>, ProviderError> {
+        use base64::Engine;
+        let result = self
+            .call("getAccountInfo", json!([mint, { "encoding": "base64" }]))
+            .await?;
+        let Some(value) = result.get("value") else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(None);
+        }
+        let data = value
+            .get("data")
+            .and_then(Value::as_array)
+            .and_then(|pair| pair.first())
+            .and_then(Value::as_str)
+            .ok_or_else(|| ProviderError::Protocol("getAccountInfo without data".into()))?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data)
+            .map_err(|e| ProviderError::Protocol(format!("base64 mint data: {e}")))?;
+        parse_mint_account(&bytes)
+            .map(Some)
+            .map_err(|e| ProviderError::Protocol(e.to_string()))
+    }
+
+    async fn get_holders(&mut self, mint: &str) -> Result<Vec<HolderAmount>, ProviderError> {
+        let result = self
+            .call(
+                "getTokenLargestAccounts",
+                json!([mint, { "commitment": "confirmed" }]),
+            )
+            .await?;
+        let value = result
+            .get("value")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let holders = value
+            .iter()
+            .filter_map(|entry| {
+                let address = entry.get("address").and_then(Value::as_str)?.to_string();
+                let amount_raw: u64 = entry.get("amount").and_then(Value::as_str)?.parse().ok()?;
+                Some(HolderAmount {
+                    address,
+                    amount_raw,
+                })
+            })
+            .collect();
+        Ok(holders)
+    }
+
+    async fn get_parsed_transaction(
+        &mut self,
+        signature: &str,
+    ) -> Result<Option<serde_json::Value>, ProviderError> {
+        let result = self
+            .call(
+                "getTransaction",
+                json!([
+                    signature,
+                    {
+                        "encoding": "jsonParsed",
+                        "commitment": "confirmed",
+                        // launchpad txs are versioned; without this the
+                        // endpoint refuses them outright (-32015)
+                        "maxSupportedTransactionVersion": 1
+                    }
+                ]),
+            )
+            .await?;
+        if result.is_null() {
+            Ok(None)
+        } else {
+            Ok(Some(result))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base58_matches_reference_vectors() {
+        // Vectors cross-checked against the reference base58 implementation.
+        assert_eq!(base58_encode(&[]), "");
+        assert_eq!(base58_encode(&[0x00]), "1");
+        assert_eq!(base58_encode(&[0x00, 0x00]), "11");
+        assert_eq!(base58_encode(&[0x01]), "2");
+        assert_eq!(base58_encode(&[0x3d]), "24"); // 61 = 1*58 + 3
+        let seq: Vec<u8> = (0..32).collect();
+        assert_eq!(
+            base58_encode(&seq),
+            "1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE"
+        );
+        assert_eq!(
+            base58_encode(&[0xff; 32]),
+            "JEKNVnkbo3jma5nREBBJCDoXFVeKkD56V3xKrvRmWxFG"
+        );
+    }
+
+    #[test]
+    fn parse_mint_decodes_authority_base58() {
+        // Real layout: supply 1_000_000 at [36..44], decimals 6, mint
+        // authority COption(1) + a key of all-0x01 bytes, freeze revoked.
+        let mut data = [0u8; 82];
+        data[0] = 1;
+        data[4..36].fill(0x01);
+        data[36..44].copy_from_slice(&1_000_000u64.to_le_bytes());
+        data[44] = 6;
+        data[45] = 1; // initialized
+        let mint = parse_mint_account(&data).expect("parses");
+        assert_eq!(
+            mint.mint_authority.as_deref(),
+            Some("4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi")
+        );
+        assert_eq!(mint.freeze_authority, None);
+        assert_eq!(mint.supply_raw, 1_000_000);
+        assert_eq!(mint.decimals, 6);
+    }
 
     #[test]
     fn whitelist_rejects_everything_not_readonly() {

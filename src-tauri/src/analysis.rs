@@ -1,0 +1,75 @@
+//! Analysis stage: receives launches from the pipeline, enriches each one
+//! (one provider connection, reused; reconnects on transport failure), and
+//! persists the resulting analysis next to the event.
+
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
+
+use crate::enrich::analyze_launch;
+use crate::listener::LaunchEvent;
+use crate::provider::WsProvider;
+use crate::store::{EventStore, StoreError};
+
+pub fn spawn(
+    store: Arc<Mutex<EventStore>>,
+    ws_url: String,
+) -> (mpsc::Sender<LaunchEvent>, JoinHandle<()>) {
+    let (tx, mut rx) = mpsc::channel::<LaunchEvent>(256);
+
+    let task = tokio::spawn(async move {
+        let mut conn = connect_with_retry(&ws_url).await;
+        while let Some(event) = rx.recv().await {
+            if conn.is_none() {
+                conn = connect_with_retry(&ws_url).await;
+            }
+            let Some(provider) = conn.as_mut() else {
+                tracing::warn!(signature = %event.signature, "no provider; skipping analysis");
+                continue;
+            };
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as u64)
+                .unwrap_or(0);
+            let outcome = analyze_launch(provider, &event, now).await;
+
+            if !outcome.provider_ok {
+                // Socket looks broken; drop it so the next event reconnects.
+                conn = None;
+            }
+
+            let result = store
+                .lock()
+                .map_err(|_| StoreError::Poisoned)
+                .and_then(|mut guard| guard.append_analysis(&outcome.analysis));
+            if let Err(error) = result {
+                tracing::warn!(%error, signature = %event.signature, "analysis persist failed");
+            }
+        }
+        tracing::info!("analysis stage drained");
+    });
+
+    (tx, task)
+}
+
+async fn connect_with_retry(ws_url: &str) -> Option<WsProvider> {
+    let mut attempt = 0u32;
+    loop {
+        match WsProvider::connect(ws_url).await {
+            Ok(provider) => {
+                tracing::info!("analysis provider connected");
+                return Some(provider);
+            }
+            Err(error) => {
+                attempt += 1;
+                let secs = 2u64.saturating_pow(attempt.min(5)).min(60);
+                tracing::warn!(%error, attempt, "analysis provider connect failed");
+                sleep(Duration::from_secs(secs)).await;
+            }
+        }
+    }
+}

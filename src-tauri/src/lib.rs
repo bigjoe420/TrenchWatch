@@ -1,8 +1,11 @@
+pub mod analysis;
 pub mod commands;
 pub mod config;
+pub mod enrich;
 pub mod listener;
 pub mod pipeline;
 pub mod provider;
+pub mod risk;
 pub mod store;
 
 use std::sync::atomic::AtomicU64;
@@ -47,7 +50,12 @@ pub fn run() -> anyhow::Result<()> {
             let (status_tx, status_rx) = watch::channel(listener::ListenerStatus::Connecting);
             let dropped = Arc::new(AtomicU64::new(0));
 
-            let (handle, sink_task) = pipeline::spawn(store.clone(), 1024, dropped.clone());
+            let (analysis_tx, analysis_task) =
+                analysis::spawn(store.clone(), config.rpc.ws_url.clone());
+            tauri::async_runtime::spawn(analysis_task);
+
+            let (handle, sink_task) =
+                pipeline::spawn(store.clone(), 1024, dropped.clone(), analysis_tx);
             tauri::async_runtime::spawn(sink_task);
 
             let listener_task = listener::spawn(config.rpc.ws_url.clone(), handle, status_tx);
@@ -65,7 +73,9 @@ pub fn run() -> anyhow::Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
-            commands::get_recent_events
+            commands::get_recent_events,
+            commands::get_recent_analyses,
+            commands::get_analysis
         ])
         .run(tauri::generate_context!())
         .map_err(|e| anyhow::anyhow!("tauri runtime error: {e}"))

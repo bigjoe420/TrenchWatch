@@ -35,17 +35,20 @@ impl PipelineHandle {
     }
 }
 
-/// Spawn the drain loop: dedupe by signature, persist to the store.
+/// Spawn the drain loop: dedupe by signature, persist to the store, then
+/// hand the launch to the analysis stage.
 pub fn spawn(
     store: Arc<Mutex<EventStore>>,
     capacity: usize,
     dropped: Arc<AtomicU64>,
+    analysis_tx: mpsc::Sender<LaunchEvent>,
 ) -> (PipelineHandle, JoinHandle<()>) {
     let (tx, mut rx) = mpsc::channel::<LaunchEvent>(capacity);
 
     let task = tokio::spawn(async move {
         let mut seen: HashSet<String> = HashSet::new();
         let mut ring: VecDeque<String> = VecDeque::new();
+        let mut analysis_closed = false;
 
         while let Some(event) = rx.recv().await {
             if !seen.insert(event.signature.clone()) {
@@ -65,6 +68,12 @@ pub fn spawn(
             if let Err(error) = result {
                 dropped.fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(%error, signature = %event.signature, "persist failed");
+                continue;
+            }
+
+            if !analysis_closed && analysis_tx.send(event).await.is_err() {
+                analysis_closed = true;
+                tracing::warn!("analysis stage closed; launches will not be scored");
             }
         }
         tracing::info!("pipeline drained; sink stopping");
