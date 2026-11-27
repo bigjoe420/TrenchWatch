@@ -22,7 +22,7 @@ export class HeliusError extends Error {
   }
 }
 
-async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
+async function rpcCall(method: string, params: unknown): Promise<unknown> {
   if (!hasApiKey()) {
     throw new HeliusError(
       "no API key — copy .env.example to .env.local and add VITE_HELIUS_API_KEY",
@@ -91,21 +91,26 @@ export const PUMP_FUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
  * 2. DAS read: signatures that touched one program. This is how you ask
  *    "what happened on pump.fun recently?" without running an indexer.
  */
-export async function getSignaturesForProgram(limit = 5): Promise<
-  { signature: string; slot: number; err: boolean }[]
-> {
-  const result = (await rpcCall("getSignaturesForAsset", [
-    {
-      assetId: PUMP_FUN_PROGRAM,
-      limit,
-      sortDirection: "desc",
-    },
-  ])) as { items: { signature: string; slot: number; err: unknown }[] };
-  return result.items.map((item) => ({
-    signature: item.signature,
-    slot: item.slot,
-    err: item.err !== null,
-  }));
+export async function getSignaturesForProgram(limit = 5): Promise<{
+  total: number;
+  items: { signature: string; slot: number; err: boolean }[];
+}> {
+  const result = (await rpcCall("getSignaturesForAsset", {
+    id: PUMP_FUN_PROGRAM,
+    limit,
+    sortDirection: "desc",
+  })) as {
+    total: number;
+    items: { signature: string; slot: number; err: unknown }[];
+  };
+  return {
+    total: result.total,
+    items: result.items.map((item) => ({
+      signature: item.signature,
+      slot: item.slot,
+      err: item.err !== null,
+    })),
+  };
 }
 
 /**

@@ -34,7 +34,10 @@ const CARDS: DemoCard[] = [
     method: "DAS getSignaturesForAsset",
     what: `Digital Asset Standard read: the five most recent signatures touching the pump.fun program (${"6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P".slice(0, 12)}…).`,
     run: async () => {
-      const items = await getSignaturesForProgram(5);
+      const { total, items } = await getSignaturesForProgram(5);
+      if (items.length === 0) {
+        return `index reports total: ${total.toLocaleString()} — no signature rows returned for the program id`;
+      }
       return items
         .map((item) => `slot ${item.slot.toLocaleString()}  ${item.signature.slice(0, 24)}…${item.err ? "  (failed tx)" : ""}`)
         .join("\n");
