@@ -7,9 +7,6 @@ scores.
 
 Built to demonstrate hands-on Solana data-infrastructure skills: websocket
 ingestion under rate limits, account parsing, and evidence-backed heuristics.
-(DevRel portfolio piece.)
-
-![screenshot](docs/assets/screenshot-placeholder.png)
 
 ## What it does
 

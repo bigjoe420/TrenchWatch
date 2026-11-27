@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Real-time Solana launch monitor with explainable rug-pull risk scoring"
 authors = ["TrenchWatch contributors"]
 license = "MIT"
-repository = ""
+repository = "https://github.com/bigjoe420/TrenchWatch"
 edition = "2021"
 
 [lib]
