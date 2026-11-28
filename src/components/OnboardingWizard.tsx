@@ -21,6 +21,7 @@ export default function OnboardingWizard({ onDone }: { onDone: () => void }) {
   const [apiKey, setApiKeyInput] = useState("");
   const [apiKeyDone, setApiKeyDone] = useState(false);
   const [webhook, setWebhook] = useState("");
+  const [criticalWebhook, setCriticalWebhook] = useState("");
   const [webhookDone, setWebhookDone] = useState(false);
   const [alerts, setAlerts] = useState<AlertConfig | null>(null);
   const [saving, setSaving] = useState(false);
@@ -34,6 +35,7 @@ export default function OnboardingWizard({ onDone }: { onDone: () => void }) {
       .then((config) => {
         setAlerts(config);
         setWebhook(config.discord_webhook_url);
+        setCriticalWebhook(config.discord_critical_webhook_url);
         setWebhookDone(config.discord_webhook_url.trim().length > 0);
       })
       .catch(() => {});
@@ -58,12 +60,17 @@ export default function OnboardingWizard({ onDone }: { onDone: () => void }) {
     setSaving(true);
     setError(null);
     try {
-      await updateAlertsConfig({ ...alerts, discord_webhook_url: webhook.trim() });
-      setAlerts({ ...alerts, discord_webhook_url: webhook.trim() });
+      const next = {
+        ...alerts,
+        discord_webhook_url: webhook.trim(),
+        discord_critical_webhook_url: criticalWebhook.trim(),
+      };
+      await updateAlertsConfig(next);
+      setAlerts(next);
       setWebhookDone(webhook.trim().length > 0);
       setStep(3);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "could not save the webhook");
+      setError(err instanceof Error ? err.message : "could not save the webhooks");
     } finally {
       setSaving(false);
     }
@@ -154,22 +161,31 @@ export default function OnboardingWizard({ onDone }: { onDone: () => void }) {
 
         {step === 2 && (
           <section className="wizard-body">
-            <h1>your Discord webhook</h1>
+            <h1>your Discord webhooks</h1>
             <p>
-              Alerts post to your own server through a webhook — the app talks to nothing
+              Alerts post to your own server through webhooks — the app talks to nothing
               else. To make one: Server Settings → Integrations → Webhooks → New Webhook →
-              pick the channel → Copy Webhook URL. Flag alerts can use a second webhook in
-              Settings later.
+              pick the channel → Copy Webhook URL.
             </p>
             {webhookDone && (
-              <p className="wizard-note">a webhook is already on file — you can keep it or replace it.</p>
+              <p className="wizard-note">webhooks are already on file — you can keep or replace them.</p>
             )}
+            <em className="wizard-label">main channel — every launch receipt + graduation announcements</em>
             <input
               type="text"
               className="wizard-input mono"
               placeholder="https://discord.com/api/webhooks/… (empty = alerts stay off)"
               value={webhook}
               onChange={(e) => setWebhook(e.target.value)}
+              spellCheck={false}
+            />
+            <em className="wizard-label">critical flags — posted here instead (optional, same channel is fine)</em>
+            <input
+              type="text"
+              className="wizard-input mono"
+              placeholder="https://discord.com/api/webhooks/… (empty = uses the main webhook)"
+              value={criticalWebhook}
+              onChange={(e) => setCriticalWebhook(e.target.value)}
               spellCheck={false}
             />
             {error && <p className="wizard-error">{error}</p>}

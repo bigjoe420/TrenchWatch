@@ -969,6 +969,14 @@ code {
   outline: none;
 }
 
+.wizard-label {
+  display: block;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-style: normal;
+  margin: 14px 0 5px;
+}
+
 .wizard-input:focus {
   border-color: var(--helius);
 }
