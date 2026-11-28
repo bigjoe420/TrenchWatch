@@ -1,6 +1,6 @@
 [package]
 name = "trenchwatch"
-version = "0.1.0"
+version = "0.1.1"
 description = "Real-time Solana launch monitor with explainable rug-pull risk scoring"
 authors = ["TrenchWatch contributors"]
 license = "MIT"

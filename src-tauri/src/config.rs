@@ -186,26 +186,18 @@ impl Config {
         Ok(path)
     }
 
-    /// The websocket the stream should actually connect to, honoring the
-    /// current `api_key`. History: early builds embedded the key directly in
-    /// `ws_url` (`wss://mainnet.helius-rpc.com/?api-key=...`). If that
-    /// key-carrying URL is still on file, the embedded key is stale the
-    /// moment the operator saves a new one — the stream would keep
-    /// authenticating with the OLD key until restart (or forever, since the
-    /// reconnect loop reuses the same string). So for key-carrying URLs we
-    /// rebuild from the canonical `api_key` field on every connect; a
-    /// cleared key falls back to the free public websocket. Custom or
-    /// public `ws_url`s without an `api-key=` parameter are operator
-    /// configuration and pass through untouched.
+    /// The websocket the stream should actually connect to. Keyed Helius
+    /// websocket URLs (`...?api-key=...`) are deliberately NOT used for the
+    /// stream: Helius meters LaserStream websocket traffic per event, and
+    /// four busy program subscriptions burned ~994k credits in two days in
+    /// real use — the metered-read cap never saw it. The stream therefore
+    /// rides the free public websocket; the API key unlocks metered
+    /// enrichment READS only (capped per day, public fallback). Operator
+    /// `ws_url`s without an `api-key=` parameter pass through untouched.
     pub fn effective_ws_url(&self) -> String {
         const PUBLIC_WS: &str = "wss://api.mainnet-beta.solana.com";
         if self.rpc.ws_url.contains("api-key=") {
-            let key = self.rpc.api_key.trim();
-            if key.is_empty() {
-                PUBLIC_WS.to_string()
-            } else {
-                format!("wss://mainnet.helius-rpc.com/?api-key={key}")
-            }
+            PUBLIC_WS.to_string()
         } else {
             self.rpc.ws_url.clone()
         }
@@ -233,14 +225,12 @@ mod tests {
         // Public/custom URL without an api-key param: operator config, untouched.
         assert_eq!(cfg.effective_ws_url(), cfg.rpc.ws_url);
 
-        // Key-carrying URL from an early build: rebuilt from the api_key field
-        // on every connect, so replacing the key actually takes effect.
+        // Key-carrying URL from an early build: NEVER used for the stream —
+        // keyed Helius websockets are metered per event (LaserStream burned
+        // ~994k credits in two days of real use). Stream rides public WS;
+        // the key is for metered reads only.
         cfg.rpc.ws_url = "wss://mainnet.helius-rpc.com/?api-key=stale".to_string();
         cfg.rpc.api_key = "fresh".to_string();
-        assert_eq!(cfg.effective_ws_url(), "wss://mainnet.helius-rpc.com/?api-key=fresh");
-
-        // Cleared key: fall back to the free public websocket.
-        cfg.rpc.api_key = String::new();
         assert_eq!(cfg.effective_ws_url(), "wss://api.mainnet-beta.solana.com");
     }
 
