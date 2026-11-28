@@ -63,20 +63,22 @@ pub fn run() -> anyhow::Result<()> {
             let alerts_config = alerts::SharedAlertConfig::new(Mutex::new(config.alerts.clone()));
             let alerts = Arc::new(alerts::Alerts::new(alerts_config, app.handle().clone()));
 
-            // Paid enrichment budget: only built when a key is configured,
-            // so the app runs entirely on the free public RPC otherwise.
-            let helius = if config.rpc.api_key.trim().is_empty() {
-                None
+            // Paid enrichment budget: the meter ALWAYS exists so a key saved
+            // later (wizard or Settings) applies live — `enabled()` reflects
+            // whether a key is present, and with no key every read falls back
+            // to the free public RPC.
+            let helius = Some(Arc::new(provider::HeliusMeter::new(
+                &config.rpc.api_key,
+                config.rpc.daily_credit_cap,
+            )));
+            if config.rpc.api_key.trim().is_empty() {
+                tracing::info!("no helius key configured — enrichment reads use the public endpoint");
             } else {
                 tracing::info!(
                     cap = config.rpc.daily_credit_cap,
                     "helius enrichment enabled (key loaded from config.toml)"
                 );
-                Some(Arc::new(provider::HeliusMeter::new(
-                    &config.rpc.api_key,
-                    config.rpc.daily_credit_cap,
-                )))
-            };
+            }
 
             let (analysis_tx, analysis_task) = analysis::spawn(
                 store.clone(),

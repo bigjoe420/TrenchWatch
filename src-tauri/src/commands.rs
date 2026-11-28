@@ -141,8 +141,10 @@ pub async fn get_rpc_setup_status(state: State<'_, AppState>) -> Result<RpcSetup
 }
 
 /// Install (or clear, with an empty string) the Helius API key from the
-/// first-run wizard. Persists to config.toml and applies to the live meter;
-/// the launch stream itself is unaffected either way.
+/// first-run wizard. Persists to config.toml and applies to the live meter —
+/// the meter always exists (created with an empty key when none is set), so
+/// a first key saved mid-session enables enrichment without a restart.
+/// The launch stream itself is unaffected either way.
 #[tauri::command]
 pub async fn set_api_key(state: State<'_, AppState>, api_key: String) -> Result<(), String> {
     let key = api_key.trim().to_string();
