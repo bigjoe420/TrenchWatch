@@ -10,6 +10,9 @@ scores.
 Built to demonstrate hands-on Solana data-infrastructure skills: websocket
 ingestion under rate limits, account parsing, and evidence-backed heuristics.
 
+**▶ [Watch the setup walkthrough](https://youtu.be/xKBs0-OAYrQ)** — what
+TrenchWatch does, how to download it, and the full first-run wizard.
+
 ## What it does
 
 - **Watches** the pump.fun launch feed over a websocket RPC subscription,
