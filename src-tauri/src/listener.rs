@@ -160,9 +160,11 @@ pub fn to_launch_event(notification: LogNotification) -> Option<LaunchEvent> {
 
 /// Run the listen/reconnect loop; the caller spawns the returned future on
 /// its async runtime (Tauri setup has no Tokio context). Runs until the app
-/// shuts down.
+/// shuts down. `config` is shared with the settings commands: the effective
+/// websocket is rebuilt from it on EVERY connect attempt, so saving a new
+/// API key applies without an app restart.
 pub async fn spawn(
-    ws_url: String,
+    config: std::sync::Arc<std::sync::Mutex<crate::config::Config>>,
     sink: PipelineHandle,
     status: tokio::sync::watch::Sender<ListenerStatus>,
 ) {
@@ -172,6 +174,10 @@ pub async fn spawn(
 
         loop {
             let _ = status.send(ListenerStatus::Connecting);
+            let ws_url = config
+                .lock()
+                .map(|c| c.effective_ws_url())
+                .unwrap_or_default();
             let mut provider = match WsProvider::connect(&ws_url).await {
                 Ok(provider) => provider,
                 Err(error) => {

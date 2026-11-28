@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 
 use crate::alerts::Alerts;
+use crate::config::Config;
 use crate::enrich::analyze_launch;
 use crate::listener::LaunchEvent;
 use crate::provider::WsProvider;
@@ -17,19 +18,21 @@ use crate::store::{EventStore, StoreError};
 
 /// Returns the channel end for producers and the stage future for the
 /// caller to spawn on its async runtime (Tauri setup has no Tokio context).
+/// `config` is shared with the settings commands; the effective websocket
+/// (which follows the current API key) is rebuilt on every connect.
 pub fn spawn(
     store: Arc<Mutex<EventStore>>,
-    ws_url: String,
+    config: Arc<Mutex<Config>>,
     alerts: Arc<Alerts>,
     helius: Option<Arc<crate::provider::HeliusMeter>>,
 ) -> (mpsc::Sender<LaunchEvent>, impl Future<Output = ()>) {
     let (tx, mut rx) = mpsc::channel::<LaunchEvent>(256);
 
     let task = async move {
-        let mut conn = connect_with_retry(&ws_url, &helius).await;
+        let mut conn = connect_with_retry(&config, &helius).await;
         while let Some(event) = rx.recv().await {
             if conn.is_none() {
-                conn = connect_with_retry(&ws_url, &helius).await;
+                conn = connect_with_retry(&config, &helius).await;
             }
             let Some(provider) = conn.as_mut() else {
                 tracing::warn!(signature = %event.signature, "no provider; skipping analysis");
@@ -107,12 +110,16 @@ pub fn spawn(
 }
 
 async fn connect_with_retry(
-    ws_url: &str,
+    config: &Arc<Mutex<Config>>,
     helius: &Option<Arc<crate::provider::HeliusMeter>>,
 ) -> Option<WsProvider> {
     let mut attempt = 0u32;
     loop {
-        match WsProvider::connect_with_helius(ws_url, helius.clone()).await {
+        let ws_url = config
+            .lock()
+            .map(|c| c.effective_ws_url())
+            .unwrap_or_default();
+        match WsProvider::connect_with_helius(&ws_url, helius.clone()).await {
             Ok(provider) => {
                 tracing::info!("analysis provider connected");
                 return Some(provider);

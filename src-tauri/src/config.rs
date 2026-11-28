@@ -185,6 +185,31 @@ impl Config {
         std::fs::write(&path, text)?;
         Ok(path)
     }
+
+    /// The websocket the stream should actually connect to, honoring the
+    /// current `api_key`. History: early builds embedded the key directly in
+    /// `ws_url` (`wss://mainnet.helius-rpc.com/?api-key=...`). If that
+    /// key-carrying URL is still on file, the embedded key is stale the
+    /// moment the operator saves a new one — the stream would keep
+    /// authenticating with the OLD key until restart (or forever, since the
+    /// reconnect loop reuses the same string). So for key-carrying URLs we
+    /// rebuild from the canonical `api_key` field on every connect; a
+    /// cleared key falls back to the free public websocket. Custom or
+    /// public `ws_url`s without an `api-key=` parameter are operator
+    /// configuration and pass through untouched.
+    pub fn effective_ws_url(&self) -> String {
+        const PUBLIC_WS: &str = "wss://api.mainnet-beta.solana.com";
+        if self.rpc.ws_url.contains("api-key=") {
+            let key = self.rpc.api_key.trim();
+            if key.is_empty() {
+                PUBLIC_WS.to_string()
+            } else {
+                format!("wss://mainnet.helius-rpc.com/?api-key={key}")
+            }
+        } else {
+            self.rpc.ws_url.clone()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -200,6 +225,23 @@ mod tests {
         assert_eq!(cfg.alerts.min_severity, Severity::Critical);
         assert!(cfg.alerts.discord_webhook_url.is_empty());
         assert!(!cfg.alerts.setup_completed); // fresh installs get the wizard
+    }
+
+    #[test]
+    fn effective_ws_url_tracks_the_key_field() {
+        let mut cfg = Config::default();
+        // Public/custom URL without an api-key param: operator config, untouched.
+        assert_eq!(cfg.effective_ws_url(), cfg.rpc.ws_url);
+
+        // Key-carrying URL from an early build: rebuilt from the api_key field
+        // on every connect, so replacing the key actually takes effect.
+        cfg.rpc.ws_url = "wss://mainnet.helius-rpc.com/?api-key=stale".to_string();
+        cfg.rpc.api_key = "fresh".to_string();
+        assert_eq!(cfg.effective_ws_url(), "wss://mainnet.helius-rpc.com/?api-key=fresh");
+
+        // Cleared key: fall back to the free public websocket.
+        cfg.rpc.api_key = String::new();
+        assert_eq!(cfg.effective_ws_url(), "wss://api.mainnet-beta.solana.com");
     }
 
     #[test]

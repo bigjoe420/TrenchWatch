@@ -23,7 +23,10 @@ pub struct AppState {
     pub dropped: Arc<AtomicU64>,
     pub started: Instant,
     pub endpoint: String,
-    pub config: Mutex<config::Config>,
+    /// Shared with the listener/analysis spawns: edits via `set_api_key`
+    /// are visible to the reconnect loops, which rebuild the effective
+    /// websocket (and thus the key) on every connect attempt.
+    pub config: Arc<Mutex<config::Config>>,
     pub app_data_dir: PathBuf,
     /// Paid-enrichment budget; `None` = public endpoint for everything.
     pub helius: Option<Arc<provider::HeliusMeter>>,
@@ -48,6 +51,7 @@ pub fn run() -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("create app data dir: {e}"))?;
 
             let config = config::load(&app_data)?;
+            let shared_config = Arc::new(Mutex::new(config.clone()));
             let store_dir = app_data.join(&config.storage.store_dir);
             let store = store::EventStore::open(&store_dir)?;
             tracing::info!(path = ?store.path(), "event store open");
@@ -76,7 +80,7 @@ pub fn run() -> anyhow::Result<()> {
 
             let (analysis_tx, analysis_task) = analysis::spawn(
                 store.clone(),
-                config.rpc.ws_url.clone(),
+                shared_config.clone(),
                 alerts,
                 helius.clone(),
             );
@@ -86,7 +90,8 @@ pub fn run() -> anyhow::Result<()> {
                 pipeline::spawn(store.clone(), 1024, dropped.clone(), analysis_tx);
             tauri::async_runtime::spawn(sink_task);
 
-            let listener_task = listener::spawn(config.rpc.ws_url.clone(), handle, status_tx);
+            let listener_task =
+                listener::spawn(shared_config.clone(), handle, status_tx);
             tauri::async_runtime::spawn(listener_task);
 
             app.manage(AppState {
@@ -95,7 +100,7 @@ pub fn run() -> anyhow::Result<()> {
                 dropped,
                 started: Instant::now(),
                 endpoint: config.rpc.ws_url.clone(),
-                config: Mutex::new(config),
+                config: shared_config,
                 app_data_dir: app_data.clone(),
                 helius,
             });
