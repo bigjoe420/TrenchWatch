@@ -12,6 +12,10 @@ export default function SettingsDrawer({
 }) {
   const [config, setConfig] = useState<AlertConfig>(initial);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
+
+  // If a fresher config arrives after mount (async refetch), resync so a
+  // save can never write back stale webhook fields over newer ones.
+  useEffect(() => setConfig(initial), [initial]);
   const [keyOnFile, setKeyOnFile] = useState<boolean | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");

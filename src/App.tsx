@@ -85,9 +85,15 @@ export default function App() {
   const programOptions = ["all", ...new Set(events.map((event) => event.program_label))];
 
   const openSettings = useCallback(() => {
-    setSettingsOpen(true);
+    // Clear the stale snapshot first so the drawer can only mount on a
+    // freshly fetched config — mounting on the startup-time config would
+    // let a later save write back pre-wizard values (wiping webhooks).
+    setAlertConfig(null);
     getAlertsConfig()
-      .then(setAlertConfig)
+      .then((config) => {
+        setAlertConfig(config);
+        setSettingsOpen(true);
+      })
       .catch(() => setAlertConfig(null));
   }, []);
 
